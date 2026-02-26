@@ -315,7 +315,7 @@ a {
 
 .two-column {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.5fr);
   gap: 2.5rem;
   align-items: flex-start;
 }
@@ -365,6 +365,10 @@ a {
   text-align: right;
 }
 
+.info-card li:nth-child(3) span:last-child {
+  font-size: 0.8rem;
+}
+
 .timeline {
   position: relative;
   padding-left: 1.1rem;
@@ -386,6 +390,10 @@ a {
   position: relative;
   display: grid;
   gap: 0.35rem;
+}
+
+.timeline-content {
+  padding-left: 0.4rem;
 }
 
 .timeline-dot {
@@ -416,8 +424,12 @@ a {
 }
 
 .projects-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
   gap: 1.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
 }
 
 .card {
@@ -429,6 +441,14 @@ a {
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.8);
   transition: transform var(--transition-med), box-shadow var(--transition-med),
     border-color var(--transition-med), background var(--transition-med);
+}
+
+.project-card {
+  flex: 0 0 320px;
+  max-width: 320px;
+  width: 320px;
+  min-height: 220px;
+  scroll-snap-align: start;
 }
 
 .card:hover {
@@ -446,7 +466,7 @@ a {
 
 .project-stack {
   margin: 0 0 0.6rem;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.16em;
   color: var(--text-muted);
