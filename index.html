@@ -17,10 +17,14 @@
           <span></span>
         </button>
         <ul class="nav-list">
-          <li><a href="#about">자기소개</a></li>
-          <li><a href="#experience">경력·경험</a></li>
-          <li><a href="#projects">프로젝트</a></li>
+          <li><a href="#about" data-i18n="nav.about">자기소개</a></li>
+          <li><a href="#experience" data-i18n="nav.experience">경력·경험</a></li>
+          <li><a href="#projects" data-i18n="nav.projects">수행 이력</a></li>
         </ul>
+        <div class="lang-toggle" aria-label="Language switch">
+          <button type="button" class="lang-btn is-active" data-lang="ko">KR</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        </div>
       </nav>
     </div>
   </header>
@@ -29,19 +33,23 @@
     <section class="hero" id="top">
       <div class="container hero-inner">
         <div class="hero-text">
-          <p class="hero-tag">ERP · Strategy · Internal Control</p>
-          <h1>백소영 Portfolio</h1>
-          <p class="hero-sub">
+          <p class="hero-tag" data-i18n="hero.tag">ERP · Strategy · Internal Control</p>
+          <h1 data-i18n="hero.title">백소영 Portfolio</h1>
+          <p class="hero-sub" data-i18n="hero.sub">
             ERP, 전략기획, 거버넌스·내부통제를 연결하는 비즈니스-시스템 연계형 전문가입니다.
           </p>
           <div class="hero-actions">
-            <a href="#projects" class="btn primary">프로젝트 보러가기</a>
-            <a href="#about" class="btn ghost">자기소개 보기</a>
+            <a href="#projects" class="btn primary" data-i18n="hero.ctaProjects">프로젝트 보러가기</a>
+            <a href="#about" class="btn ghost" data-i18n="hero.ctaAbout">자기소개 보기</a>
           </div>
         </div>
         <div class="hero-card">
           <div class="hero-avatar">
-            <span>SYB</span>
+            <img
+              src="../.cursor/projects/c-Users-user-portpfolio/assets/c__Users_user_AppData_Roaming_Cursor_User_workspaceStorage_5b6964b04b693b7df6d92ec1de199b71_images_image-7a306ec3-4fa9-4263-86a2-8e22f0005261.png"
+              alt="SoYoung Back 프로필 사진"
+              class="hero-avatar-img"
+            />
           </div>
           <div class="hero-meta">
             <p class="hero-name">SoYoung Back</p>
@@ -55,20 +63,27 @@
     <section id="about" class="section section-alt">
       <div class="container section-inner two-column">
         <div>
-          <h2>자기소개</h2>
-          <p>
+          <h2 data-i18n="about.title">자기소개</h2>
+          <p data-i18n="about.body">
             ERP 구축/운영, 전략기획, 내부통제 및 인증 대응 경험을 바탕으로 비즈니스와 기술을 연결하는
             실무형 IT 기획·운영 담당자입니다.
           </p>
         </div>
         <aside class="info-card">
-          <h3>기본 정보</h3>
+          <h3 data-i18n="about.basic">기본 정보</h3>
           <ul>
-            <li><span>이름</span><span>백소영 (SoYoung Back)</span></li>
-            <li><span>포지션</span><span>IT Strategy · ERP · Internal Control</span></li>
-            <li><span>핵심역량</span><span>프로세스·화면 설계 / DB 설계 / 거버넌스·내부통제</span></li>
-            <li><span>학위</span><span>FinTech MBA</span></li>
-            <li><span>이메일</span><span>-</span></li>
+            <li><span data-i18n="about.nameLabel">이름</span><span>백소영 (SoYoung Back)</span></li>
+            <li><span data-i18n="about.positionLabel">포지션</span><span>IT Strategy · ERP · Internal Control</span></li>
+            <li><span data-i18n="about.skillLabel">핵심역량</span><span>프로세스·화면 설계 / DB 설계 / 거버넌스·내부통제</span></li>
+            <li><span data-i18n="about.degreeLabel">학위</span><span>FinTech MBA</span></li>
+            <li>
+              <span data-i18n="about.emailLabel">이메일</span>
+              <span>
+                <a href="mailto:qtd715@gmail.com" class="email-link" aria-label="이메일 보내기">
+                  <span class="email-icon" aria-hidden="true">&#9993;</span>
+                </a>
+              </span>
+            </li>
           </ul>
         </aside>
       </div>
@@ -77,8 +92,8 @@
     <section id="experience" class="section">
       <div class="container section-inner">
         <header class="section-header">
-          <h2>경력 · 경험</h2>
-          <p>ERP, 전략기획, 내부통제 및 거버넌스까지의 경험을 요약합니다.</p>
+          <h2 data-i18n="exp.title">경력 · 경험</h2>
+          <p data-i18n="exp.sub">ERP, 전략기획, 내부통제 및 거버넌스까지의 경험을 요약합니다.</p>
         </header>
         <div class="timeline">
           <article class="timeline-item">
@@ -132,36 +147,51 @@
     <section id="projects" class="section section-alt">
       <div class="container section-inner">
         <header class="section-header">
-          <h2>프로젝트</h2>
-          <p>거버넌스·내부통제, ERP, PMO 경험이 녹아 있는 주요 프로젝트입니다.</p>
+          <h2 data-i18n="projects.title">수행 이력</h2>
+          <p data-i18n="projects.sub">거버넌스·내부통제, ERP, PMO 경험이 녹아 있는 주요 수행 내역입니다.</p>
         </header>
-        <div class="grid projects-grid">
-          <article class="card project-card">
-            <h3>SOC 인증</h3>
-            <p class="project-stack">SOC2 · Internal Control · Confluence · Documentation</p>
-            <p class="project-desc">
-              서비스 운영조직 관점에서 내부통제 대응 실무를 수행했습니다. 정책/지침 구조 정리, 산출물
-              관리, 변경 이력 정리, 유관부서 커뮤니케이션을 통해 인증 대응의 일관성과 추적 가능성을
-              높였습니다.
-            </p>
-          </article>
+        <div class="projects">
+          <div class="grid projects-grid" role="tablist" aria-label="프로젝트 탭">
+            <button class="card project-card project-tab is-selected" type="button" role="tab" aria-selected="true" data-project="soc">
+              <h3>SOC 인증</h3>
+              <p class="project-stack">SOC 2 Type 1 · Type 2 · Internal Control</p>
+              <p class="project-desc">인증 기획/총괄 및 유관부서 협업으로 전 통제항목 통과</p>
+            </button>
 
-          <article class="card project-card">
-            <h3>ERP 구축 및 업무 프로세스 고도화</h3>
-            <p class="project-stack">ERP · Process Design · Requirement Analysis · User Communication</p>
-            <p class="project-desc">
-              ERP 구축 프로젝트에서 요구사항 분석, 프로세스 설계, 현업 커뮤니케이션, 운영 안정화 업무를
-              수행했습니다.
-            </p>
-          </article>
+            <button class="card project-card project-tab" type="button" role="tab" aria-selected="false" data-project="erp">
+              <h3>ERP 구축 및 업무 프로세스 고도화</h3>
+              <p class="project-stack">ERP · Process Design · Requirement Analysis</p>
+              <p class="project-desc">요구사항 분석부터 설계/커뮤니케이션/운영 안정화까지</p>
+            </button>
 
-          <article class="card project-card">
-            <h3>솔루션 도입 검토 및 유관부서 커뮤니케이션</h3>
-            <p class="project-stack">PMO · Cross-functional Coordination · Infra Communication</p>
-            <p class="project-desc">
-              Salesforce, ERP 등 솔루션 도입 검토 과정에서 아키텍처, 인프라 비용, 리스크 검토 논의사항을
-              정리하고 유관부서와의 커뮤니케이션을 수행했습니다.
-            </p>
+            <button class="card project-card project-tab" type="button" role="tab" aria-selected="false" data-project="pmo">
+              <h3>전략 기획 및 디지털 전환</h3>
+              <p class="project-stack">IT Strategy · Digital Transformation · Governance</p>
+              <p class="project-desc">CRM 도입/내재화 및 데이터 거버넌스 체계 구축</p>
+            </button>
+          </div>
+
+          <article class="card project-detail" id="project-detail" aria-live="polite">
+            <header class="project-detail-header">
+              <p class="project-detail-kicker" id="project-detail-kicker">Project 01</p>
+              <h3 class="project-detail-title" id="project-detail-title">SOC Type 1·2 인증 기획 및 총괄</h3>
+              <p class="project-detail-sub" id="project-detail-sub">
+                유관부서 및 계열회사 협업으로 전 통제항목 통과 및 인증서 발급 완료
+              </p>
+            </header>
+            <div class="project-detail-body" id="project-detail-body">
+              <ul class="project-detail-list">
+                <li>SOC 2 Type 1, Type 2 인증 기획 및 총괄</li>
+                <li>유관부서/계열회사와 협업하여 전 통제항목 통과 및 인증서 발급 완료</li>
+                <li>글로벌 SaaS 서비스 플랫폼 런칭과 함께 북미 고객 대상 운영 회의 리드</li>
+                <li>서비스 신뢰성 및 확장성 확보</li>
+              </ul>
+              <div class="project-detail-links">
+                <a href="https://www.datanews.co.kr/news/article.html?no=142864" target="_blank" rel="noreferrer noopener">
+                  관련 기사: 엠로 SRM SaaS 솔루션 SOC2 타입2 획득 (DataNews)
+                </a>
+              </div>
+            </div>
           </article>
         </div>
       </div>
