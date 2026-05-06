@@ -1,8 +1,22 @@
 @echo off
 REM 외부(인터넷)에서 접속 가능한 임시 공개 URL 만들기.
 REM 사용 전 sy_valuation\run.py 가 실행 중이어야 함.
+REM
+REM 주의: 회사 네트워크에서 Cloudflare 포트(7844) 가 막혀 있을 수 있습니다.
+REM       그 경우 모바일 핫스팟 또는 자택망에서 실행하거나, Render.com 클라우드 배포를 권장.
 
-REM 1) cloudflared 시도 (회원가입 불필요, *.trycloudflare.com)
+setlocal
+set HERE=%~dp0
+set LOCAL_CF=%HERE%bin\cloudflared.exe
+
+REM 1) 로컬 bin 의 cloudflared 우선 사용
+if exist "%LOCAL_CF%" (
+    echo [cloudflared, 로컬 바이너리] 임시 터널 시작...
+    "%LOCAL_CF%" tunnel --url http://localhost:8765 --no-autoupdate
+    goto :eof
+)
+
+REM 2) PATH 의 cloudflared 시도
 where cloudflared >nul 2>&1
 if %ERRORLEVEL%==0 (
     echo [cloudflared] 임시 터널 시작...

@@ -9,6 +9,8 @@ venv/
 sy_valuation/data/cache/
 sy_valuation/data/cache.db
 sy_valuation/data/cache.db-*
+sy_valuation/bin/cloudflared.exe
+sy_valuation/bin/*.exe
 
 # DRM-protected internal Excel files (do not redistribute)
 *.xlsx1
