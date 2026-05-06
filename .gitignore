@@ -1,0 +1,17 @@
+.env
+*.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.vscode/
+.idea/
+sy_valuation/data/cache/
+
+# DRM-protected internal Excel files (do not redistribute)
+*.xlsx1
+기업가치평가_*.xlsx*
+
+# OS / IDE
+.DS_Store
+Thumbs.db

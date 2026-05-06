@@ -1,0 +1,530 @@
+{
+  "_comment": "오프라인 데모용 표본 재무데이터. 실제 운영 시 DART/KRX 커넥터로 교체. 모든 단위는 원(KRW), 주식수는 주(株).",
+  "_updated": "2026-05-06",
+  "sectors": {
+    "반도체":     {"per": 14.5, "pbr": 1.6, "psr": 2.1, "ev_ebitda": 8.5},
+    "IT서비스":   {"per": 18.0, "pbr": 2.0, "psr": 1.5, "ev_ebitda": 9.0},
+    "자동차":     {"per": 8.0,  "pbr": 0.9, "psr": 0.7, "ev_ebitda": 5.5},
+    "2차전지":    {"per": 22.0, "pbr": 3.0, "psr": 2.5, "ev_ebitda": 12.0},
+    "바이오":     {"per": 30.0, "pbr": 4.0, "psr": 6.0, "ev_ebitda": 18.0},
+    "은행":       {"per": 5.5,  "pbr": 0.5, "psr": 1.8, "ev_ebitda": 6.0},
+    "통신":       {"per": 9.0,  "pbr": 0.8, "psr": 0.9, "ev_ebitda": 4.5},
+    "유통":       {"per": 12.0, "pbr": 1.0, "psr": 0.5, "ev_ebitda": 6.5},
+    "철강":       {"per": 7.5,  "pbr": 0.6, "psr": 0.5, "ev_ebitda": 5.0},
+    "조선":       {"per": 11.0, "pbr": 1.2, "psr": 0.8, "ev_ebitda": 7.0},
+    "에너지":     {"per": 9.5,  "pbr": 1.0, "psr": 0.6, "ev_ebitda": 5.5},
+    "엔터":       {"per": 25.0, "pbr": 3.5, "psr": 4.0, "ev_ebitda": 14.0}
+  },
+  "companies": [
+    {
+      "ticker": "005930", "name": "삼성전자", "sector": "반도체",
+      "current_price": 78500, "shares_outstanding": 5969782550,
+      "eps": 5300, "bps": 60100, "sps": 48000, "dps": 1444, "roe": 0.089,
+      "revenue": 285000000000000, "operating_income": 32000000000000,
+      "net_income": 31600000000000, "ebitda": 65000000000000,
+      "fcf": 24000000000000, "net_debt": -75000000000000,
+      "growth_rate": 0.10
+    },
+    {
+      "ticker": "000660", "name": "SK하이닉스", "sector": "반도체",
+      "current_price": 195000, "shares_outstanding": 728002365,
+      "eps": 12500, "bps": 105000, "sps": 65000, "dps": 1200, "roe": 0.12,
+      "revenue": 47000000000000, "operating_income": 8000000000000,
+      "net_income": 9100000000000, "ebitda": 19000000000000,
+      "fcf": 6500000000000, "net_debt": 22000000000000,
+      "growth_rate": 0.18
+    },
+    {
+      "ticker": "035420", "name": "NAVER", "sector": "IT서비스",
+      "current_price": 195000, "shares_outstanding": 159000000,
+      "eps": 9500, "bps": 145000, "sps": 65000, "dps": 1300, "roe": 0.07,
+      "revenue": 10500000000000, "operating_income": 1700000000000,
+      "net_income": 1500000000000, "ebitda": 2400000000000,
+      "fcf": 1000000000000, "net_debt": -2500000000000,
+      "growth_rate": 0.12
+    },
+    {
+      "ticker": "035720", "name": "카카오", "sector": "IT서비스",
+      "current_price": 49500, "shares_outstanding": 437000000,
+      "eps": 800, "bps": 24000, "sps": 17000, "dps": 60, "roe": 0.034,
+      "revenue": 7600000000000, "operating_income": 580000000000,
+      "net_income": 350000000000, "ebitda": 1100000000000,
+      "fcf": 400000000000, "net_debt": -3500000000000,
+      "growth_rate": 0.08
+    },
+    {
+      "ticker": "005380", "name": "현대차", "sector": "자동차",
+      "current_price": 235000, "shares_outstanding": 211000000,
+      "eps": 55000, "bps": 350000, "sps": 800000, "dps": 11400, "roe": 0.16,
+      "revenue": 168000000000000, "operating_income": 15100000000000,
+      "net_income": 11600000000000, "ebitda": 22000000000000,
+      "fcf": 8500000000000, "net_debt": 95000000000000,
+      "growth_rate": 0.06
+    },
+    {
+      "ticker": "000270", "name": "기아", "sector": "자동차",
+      "current_price": 105000, "shares_outstanding": 405000000,
+      "eps": 28000, "bps": 110000, "sps": 250000, "dps": 5600, "roe": 0.22,
+      "revenue": 100000000000000, "operating_income": 12000000000000,
+      "net_income": 11400000000000, "ebitda": 17000000000000,
+      "fcf": 7000000000000, "net_debt": 13000000000000,
+      "growth_rate": 0.05
+    },
+    {
+      "ticker": "373220", "name": "LG에너지솔루션", "sector": "2차전지",
+      "current_price": 365000, "shares_outstanding": 234000000,
+      "eps": 5800, "bps": 73000, "sps": 110000, "dps": 0, "roe": 0.085,
+      "revenue": 25800000000000, "operating_income": 1500000000000,
+      "net_income": 1350000000000, "ebitda": 4200000000000,
+      "fcf": -1500000000000, "net_debt": 9500000000000,
+      "growth_rate": 0.20
+    },
+    {
+      "ticker": "207940", "name": "삼성바이오로직스", "sector": "바이오",
+      "current_price": 935000, "shares_outstanding": 71000000,
+      "eps": 11500, "bps": 105000, "sps": 50000, "dps": 0, "roe": 0.115,
+      "revenue": 3550000000000, "operating_income": 1100000000000,
+      "net_income": 820000000000, "ebitda": 1500000000000,
+      "fcf": 600000000000, "net_debt": 1000000000000,
+      "growth_rate": 0.22
+    },
+    {
+      "ticker": "105560", "name": "KB금융", "sector": "은행",
+      "current_price": 78000, "shares_outstanding": 397000000,
+      "eps": 13800, "bps": 138000, "sps": 0, "dps": 3060, "roe": 0.10,
+      "revenue": 0, "operating_income": 0,
+      "net_income": 5500000000000, "ebitda": 6500000000000,
+      "fcf": 4000000000000, "net_debt": 0,
+      "growth_rate": 0.05
+    },
+    {
+      "ticker": "055550", "name": "신한지주", "sector": "은행",
+      "current_price": 53500, "shares_outstanding": 510000000,
+      "eps": 9000, "bps": 100000, "sps": 0, "dps": 2100, "roe": 0.09,
+      "revenue": 0, "operating_income": 0,
+      "net_income": 4500000000000, "ebitda": 5400000000000,
+      "fcf": 3300000000000, "net_debt": 0,
+      "growth_rate": 0.04
+    },
+    {
+      "ticker": "017670", "name": "SK텔레콤", "sector": "통신",
+      "current_price": 56400, "shares_outstanding": 215000000,
+      "eps": 6300, "bps": 60000, "sps": 80000, "dps": 3540, "roe": 0.105,
+      "revenue": 17800000000000, "operating_income": 1750000000000,
+      "net_income": 1370000000000, "ebitda": 4500000000000,
+      "fcf": 1500000000000, "net_debt": 8000000000000,
+      "growth_rate": 0.04
+    },
+    {
+      "ticker": "030200", "name": "KT", "sector": "통신",
+      "current_price": 38500, "shares_outstanding": 261000000,
+      "eps": 5400, "bps": 67000, "sps": 100000, "dps": 1960, "roe": 0.08,
+      "revenue": 26500000000000, "operating_income": 1700000000000,
+      "net_income": 1410000000000, "ebitda": 6200000000000,
+      "fcf": 1800000000000, "net_debt": 7500000000000,
+      "growth_rate": 0.03
+    },
+    {
+      "ticker": "005490", "name": "POSCO홀딩스", "sector": "철강",
+      "current_price": 305000, "shares_outstanding": 84000000,
+      "eps": 12000, "bps": 530000, "sps": 950000, "dps": 10000, "roe": 0.023,
+      "revenue": 80000000000000, "operating_income": 1500000000000,
+      "net_income": 1000000000000, "ebitda": 5500000000000,
+      "fcf": 800000000000, "net_debt": 13000000000000,
+      "growth_rate": 0.06
+    },
+    {
+      "ticker": "009540", "name": "HD한국조선해양", "sector": "조선",
+      "current_price": 165000, "shares_outstanding": 70900000,
+      "eps": 9000, "bps": 145000, "sps": 320000, "dps": 0, "roe": 0.062,
+      "revenue": 22700000000000, "operating_income": 950000000000,
+      "net_income": 640000000000, "ebitda": 1400000000000,
+      "fcf": 700000000000, "net_debt": 1000000000000,
+      "growth_rate": 0.18
+    },
+    {
+      "ticker": "096770", "name": "SK이노베이션", "sector": "에너지",
+      "current_price": 105000, "shares_outstanding": 99000000,
+      "eps": 1500, "bps": 195000, "sps": 800000, "dps": 1000, "roe": 0.008,
+      "revenue": 79000000000000, "operating_income": 1900000000000,
+      "net_income": 150000000000, "ebitda": 5800000000000,
+      "fcf": 800000000000, "net_debt": 22000000000000,
+      "growth_rate": 0.07
+    },
+    {
+      "ticker": "352820", "name": "하이브", "sector": "엔터",
+      "current_price": 195000, "shares_outstanding": 41700000,
+      "eps": 3500, "bps": 56000, "sps": 50000, "dps": 750, "roe": 0.063,
+      "revenue": 2080000000000, "operating_income": 270000000000,
+      "net_income": 145000000000, "ebitda": 380000000000,
+      "fcf": 200000000000, "net_debt": -800000000000,
+      "growth_rate": 0.15
+    },
+    {
+      "ticker": "139480", "name": "이마트", "sector": "유통",
+      "current_price": 65500, "shares_outstanding": 27800000,
+      "eps": 1100, "bps": 245000, "sps": 1100000, "dps": 2000, "roe": 0.0045,
+      "revenue": 30700000000000, "operating_income": 470000000000,
+      "net_income": 30000000000, "ebitda": 1100000000000,
+      "fcf": 250000000000, "net_debt": 11000000000000,
+      "growth_rate": 0.03
+    },
+    {
+      "ticker": "012330", "name": "현대모비스", "sector": "자동차",
+      "current_price": 245000, "shares_outstanding": 92000000,
+      "eps": 35000, "bps": 410000, "sps": 600000, "dps": 4500, "roe": 0.085,
+      "revenue": 55000000000000, "operating_income": 2400000000000,
+      "net_income": 3200000000000, "ebitda": 4500000000000,
+      "fcf": 2000000000000, "net_debt": -1000000000000,
+      "growth_rate": 0.06
+    },
+    {
+      "ticker": "066570", "name": "LG전자", "sector": "IT서비스",
+      "current_price": 102000, "shares_outstanding": 163000000,
+      "eps": 9300, "bps": 95000, "sps": 510000, "dps": 700, "roe": 0.10,
+      "revenue": 83000000000000, "operating_income": 3700000000000,
+      "net_income": 1500000000000, "ebitda": 7000000000000,
+      "fcf": 2500000000000, "net_debt": 8500000000000,
+      "growth_rate": 0.07
+    },
+    {
+      "ticker": "247540", "name": "에코프로비엠", "sector": "2차전지",
+      "current_price": 195000, "shares_outstanding": 97800000,
+      "eps": 700, "bps": 22000, "sps": 70000, "dps": 100, "roe": 0.032,
+      "revenue": 6800000000000, "operating_income": 200000000000,
+      "net_income": 70000000000, "ebitda": 380000000000,
+      "fcf": -200000000000, "net_debt": 1500000000000,
+      "growth_rate": 0.18
+    },
+    {
+      "ticker": "010950", "name": "S-Oil", "sector": "에너지",
+      "current_price": 71000, "shares_outstanding": 112600000,
+      "eps": 5500, "bps": 65000, "sps": 320000, "dps": 1500, "roe": 0.085,
+      "revenue": 36000000000000, "operating_income": 1800000000000,
+      "net_income": 620000000000, "ebitda": 3200000000000,
+      "fcf": 1100000000000, "net_debt": 4500000000000,
+      "growth_rate": 0.06
+    },
+    {
+      "ticker": "051910", "name": "LG화학", "sector": "2차전지",
+      "current_price": 305000, "shares_outstanding": 70592343,
+      "eps": 8500, "bps": 280000, "sps": 700000, "dps": 3000, "roe": 0.030,
+      "revenue": 49500000000000, "operating_income": 1500000000000,
+      "net_income": 600000000000, "ebitda": 4500000000000,
+      "fcf": -800000000000, "net_debt": 12000000000000,
+      "growth_rate": 0.12
+    },
+    {
+      "ticker": "006400", "name": "삼성SDI", "sector": "2차전지",
+      "current_price": 285000, "shares_outstanding": 68764530,
+      "eps": 12500, "bps": 260000, "sps": 320000, "dps": 1000, "roe": 0.048,
+      "revenue": 22000000000000, "operating_income": 1100000000000,
+      "net_income": 850000000000, "ebitda": 3200000000000,
+      "fcf": -500000000000, "net_debt": 8500000000000,
+      "growth_rate": 0.18
+    },
+    {
+      "ticker": "086790", "name": "하나금융지주", "sector": "은행",
+      "current_price": 65000, "shares_outstanding": 290000000,
+      "eps": 12500, "bps": 130000, "sps": 0, "dps": 3500, "roe": 0.097,
+      "revenue": 0, "operating_income": 0,
+      "net_income": 3600000000000, "ebitda": 4400000000000,
+      "fcf": 2900000000000, "net_debt": 0,
+      "growth_rate": 0.04
+    },
+    {
+      "ticker": "316140", "name": "우리금융지주", "sector": "은행",
+      "current_price": 16500, "shares_outstanding": 740000000,
+      "eps": 3700, "bps": 36000, "sps": 0, "dps": 1000, "roe": 0.103,
+      "revenue": 0, "operating_income": 0,
+      "net_income": 2800000000000, "ebitda": 3500000000000,
+      "fcf": 2300000000000, "net_debt": 0,
+      "growth_rate": 0.04
+    },
+    {
+      "ticker": "024110", "name": "기업은행", "sector": "은행",
+      "current_price": 14500, "shares_outstanding": 798000000,
+      "eps": 3100, "bps": 32000, "sps": 0, "dps": 990, "roe": 0.097,
+      "revenue": 0, "operating_income": 0,
+      "net_income": 2500000000000, "ebitda": 3000000000000,
+      "fcf": 2000000000000, "net_debt": 0,
+      "growth_rate": 0.03
+    },
+    {
+      "ticker": "032830", "name": "삼성생명", "sector": "은행",
+      "current_price": 84000, "shares_outstanding": 200000000,
+      "eps": 9500, "bps": 195000, "sps": 0, "dps": 3000, "roe": 0.049,
+      "revenue": 0, "operating_income": 0,
+      "net_income": 1900000000000, "ebitda": 2500000000000,
+      "fcf": 1500000000000, "net_debt": 0,
+      "growth_rate": 0.03
+    },
+    {
+      "ticker": "000810", "name": "삼성화재", "sector": "은행",
+      "current_price": 350000, "shares_outstanding": 47274000,
+      "eps": 38000, "bps": 410000, "sps": 0, "dps": 16000, "roe": 0.092,
+      "revenue": 0, "operating_income": 0,
+      "net_income": 1800000000000, "ebitda": 2200000000000,
+      "fcf": 1500000000000, "net_debt": 0,
+      "growth_rate": 0.04
+    },
+    {
+      "ticker": "003550", "name": "LG", "sector": "IT서비스",
+      "current_price": 80000, "shares_outstanding": 157000000,
+      "eps": 10000, "bps": 145000, "sps": 50000, "dps": 3000, "roe": 0.069,
+      "revenue": 7800000000000, "operating_income": 1500000000000,
+      "net_income": 1570000000000, "ebitda": 2000000000000,
+      "fcf": 1300000000000, "net_debt": -1000000000000,
+      "growth_rate": 0.05
+    },
+    {
+      "ticker": "032640", "name": "LG유플러스", "sector": "통신",
+      "current_price": 9700, "shares_outstanding": 436000000,
+      "eps": 1300, "bps": 16000, "sps": 32000, "dps": 650, "roe": 0.082,
+      "revenue": 14000000000000, "operating_income": 1000000000000,
+      "net_income": 570000000000, "ebitda": 3500000000000,
+      "fcf": 1100000000000, "net_debt": 6000000000000,
+      "growth_rate": 0.03
+    },
+    {
+      "ticker": "003670", "name": "포스코퓨처엠", "sector": "2차전지",
+      "current_price": 235000, "shares_outstanding": 77468000,
+      "eps": 1200, "bps": 28000, "sps": 60000, "dps": 200, "roe": 0.043,
+      "revenue": 4650000000000, "operating_income": 280000000000,
+      "net_income": 93000000000, "ebitda": 480000000000,
+      "fcf": -300000000000, "net_debt": 1800000000000,
+      "growth_rate": 0.20
+    },
+    {
+      "ticker": "068270", "name": "셀트리온", "sector": "바이오",
+      "current_price": 195000, "shares_outstanding": 217000000,
+      "eps": 5500, "bps": 75000, "sps": 50000, "dps": 750, "roe": 0.073,
+      "revenue": 10800000000000, "operating_income": 1700000000000,
+      "net_income": 1190000000000, "ebitda": 2500000000000,
+      "fcf": 800000000000, "net_debt": 200000000000,
+      "growth_rate": 0.15
+    },
+    {
+      "ticker": "000720", "name": "현대건설", "sector": "유통",
+      "current_price": 36000, "shares_outstanding": 111000000,
+      "eps": 5500, "bps": 90000, "sps": 250000, "dps": 800, "roe": 0.061,
+      "revenue": 28000000000000, "operating_income": 1100000000000,
+      "net_income": 600000000000, "ebitda": 1400000000000,
+      "fcf": 500000000000, "net_debt": -300000000000,
+      "growth_rate": 0.08
+    },
+    {
+      "ticker": "028260", "name": "삼성물산", "sector": "유통",
+      "current_price": 145000, "shares_outstanding": 188000000,
+      "eps": 18000, "bps": 230000, "sps": 220000, "dps": 2550, "roe": 0.078,
+      "revenue": 41500000000000, "operating_income": 1900000000000,
+      "net_income": 3400000000000, "ebitda": 3500000000000,
+      "fcf": 1500000000000, "net_debt": -2500000000000,
+      "growth_rate": 0.06
+    },
+    {
+      "ticker": "010130", "name": "고려아연", "sector": "철강",
+      "current_price": 530000, "shares_outstanding": 18900000,
+      "eps": 35000, "bps": 510000, "sps": 575000, "dps": 15000, "roe": 0.069,
+      "revenue": 10870000000000, "operating_income": 750000000000,
+      "net_income": 660000000000, "ebitda": 1200000000000,
+      "fcf": 600000000000, "net_debt": -2000000000000,
+      "growth_rate": 0.07
+    },
+    {
+      "ticker": "000150", "name": "두산", "sector": "철강",
+      "current_price": 200000, "shares_outstanding": 22000000,
+      "eps": 12000, "bps": 200000, "sps": 800000, "dps": 5200, "roe": 0.060,
+      "revenue": 17600000000000, "operating_income": 1100000000000,
+      "net_income": 264000000000, "ebitda": 2000000000000,
+      "fcf": 800000000000, "net_debt": 4500000000000,
+      "growth_rate": 0.07
+    },
+    {
+      "ticker": "001040", "name": "CJ", "sector": "유통",
+      "current_price": 85000, "shares_outstanding": 31200000,
+      "eps": 9500, "bps": 185000, "sps": 1300000, "dps": 2000, "roe": 0.051,
+      "revenue": 40500000000000, "operating_income": 1700000000000,
+      "net_income": 296000000000, "ebitda": 3500000000000,
+      "fcf": 1100000000000, "net_debt": 8500000000000,
+      "growth_rate": 0.05
+    },
+    {
+      "ticker": "097950", "name": "CJ제일제당", "sector": "유통",
+      "current_price": 285000, "shares_outstanding": 15100000,
+      "eps": 14000, "bps": 350000, "sps": 1900000, "dps": 5000, "roe": 0.040,
+      "revenue": 28700000000000, "operating_income": 1500000000000,
+      "net_income": 211000000000, "ebitda": 2300000000000,
+      "fcf": 700000000000, "net_debt": 5500000000000,
+      "growth_rate": 0.04
+    },
+    {
+      "ticker": "036570", "name": "엔씨소프트", "sector": "IT서비스",
+      "current_price": 195000, "shares_outstanding": 21900000,
+      "eps": 5500, "bps": 165000, "sps": 80000, "dps": 3132, "roe": 0.033,
+      "revenue": 1750000000000, "operating_income": 100000000000,
+      "net_income": 120000000000, "ebitda": 280000000000,
+      "fcf": 150000000000, "net_debt": -1500000000000,
+      "growth_rate": 0.08
+    },
+    {
+      "ticker": "251270", "name": "넷마블", "sector": "IT서비스",
+      "current_price": 56000, "shares_outstanding": 86000000,
+      "eps": 200, "bps": 35000, "sps": 30000, "dps": 0, "roe": 0.006,
+      "revenue": 2580000000000, "operating_income": 130000000000,
+      "net_income": 17000000000, "ebitda": 280000000000,
+      "fcf": 80000000000, "net_debt": 1500000000000,
+      "growth_rate": 0.10
+    },
+    {
+      "ticker": "041510", "name": "에스엠", "sector": "엔터",
+      "current_price": 90000, "shares_outstanding": 23800000,
+      "eps": 4500, "bps": 32000, "sps": 50000, "dps": 1200, "roe": 0.141,
+      "revenue": 1190000000000, "operating_income": 175000000000,
+      "net_income": 107000000000, "ebitda": 240000000000,
+      "fcf": 100000000000, "net_debt": -300000000000,
+      "growth_rate": 0.12
+    },
+    {
+      "ticker": "035900", "name": "JYP Ent.", "sector": "엔터",
+      "current_price": 65000, "shares_outstanding": 35500000,
+      "eps": 2700, "bps": 13000, "sps": 26000, "dps": 200, "roe": 0.208,
+      "revenue": 920000000000, "operating_income": 290000000000,
+      "net_income": 96000000000, "ebitda": 350000000000,
+      "fcf": 150000000000, "net_debt": -150000000000,
+      "growth_rate": 0.15
+    },
+    {
+      "ticker": "122870", "name": "와이지엔터테인먼트", "sector": "엔터",
+      "current_price": 41000, "shares_outstanding": 18800000,
+      "eps": 1100, "bps": 17000, "sps": 30000, "dps": 200, "roe": 0.065,
+      "revenue": 564000000000, "operating_income": 70000000000,
+      "net_income": 21000000000, "ebitda": 100000000000,
+      "fcf": 60000000000, "net_debt": -120000000000,
+      "growth_rate": 0.13
+    },
+    {
+      "ticker": "323410", "name": "카카오뱅크", "sector": "은행",
+      "current_price": 22000, "shares_outstanding": 477000000,
+      "eps": 700, "bps": 9500, "sps": 0, "dps": 80, "roe": 0.074,
+      "revenue": 0, "operating_income": 0,
+      "net_income": 334000000000, "ebitda": 380000000000,
+      "fcf": 280000000000, "net_debt": 0,
+      "growth_rate": 0.10
+    },
+    {
+      "ticker": "377300", "name": "카카오페이", "sector": "IT서비스",
+      "current_price": 35000, "shares_outstanding": 134000000,
+      "eps": -500, "bps": 11000, "sps": 13000, "dps": 0, "roe": -0.045,
+      "revenue": 1740000000000, "operating_income": -50000000000,
+      "net_income": -67000000000, "ebitda": -10000000000,
+      "fcf": -100000000000, "net_debt": -1300000000000,
+      "growth_rate": 0.12
+    },
+    {
+      "ticker": "012450", "name": "한화에어로스페이스", "sector": "조선",
+      "current_price": 215000, "shares_outstanding": 50000000,
+      "eps": 11500, "bps": 90000, "sps": 200000, "dps": 1000, "roe": 0.128,
+      "revenue": 10000000000000, "operating_income": 800000000000,
+      "net_income": 575000000000, "ebitda": 1100000000000,
+      "fcf": 400000000000, "net_debt": 2000000000000,
+      "growth_rate": 0.20
+    },
+    {
+      "ticker": "042660", "name": "한화오션", "sector": "조선",
+      "current_price": 32500, "shares_outstanding": 309000000,
+      "eps": 800, "bps": 13000, "sps": 32000, "dps": 0, "roe": 0.062,
+      "revenue": 9900000000000, "operating_income": 200000000000,
+      "net_income": 247000000000, "ebitda": 500000000000,
+      "fcf": 100000000000, "net_debt": 3000000000000,
+      "growth_rate": 0.18
+    },
+    {
+      "ticker": "010140", "name": "삼성중공업", "sector": "조선",
+      "current_price": 9800, "shares_outstanding": 894000000,
+      "eps": 320, "bps": 4500, "sps": 9000, "dps": 0, "roe": 0.071,
+      "revenue": 8000000000000, "operating_income": 250000000000,
+      "net_income": 286000000000, "ebitda": 500000000000,
+      "fcf": 200000000000, "net_debt": 1500000000000,
+      "growth_rate": 0.15
+    },
+    {
+      "ticker": "267260", "name": "HD현대일렉트릭", "sector": "조선",
+      "current_price": 295000, "shares_outstanding": 36000000,
+      "eps": 14000, "bps": 80000, "sps": 90000, "dps": 1500, "roe": 0.175,
+      "revenue": 3300000000000, "operating_income": 600000000000,
+      "net_income": 504000000000, "ebitda": 700000000000,
+      "fcf": 350000000000, "net_debt": -200000000000,
+      "growth_rate": 0.18
+    },
+    {
+      "ticker": "180640", "name": "한진칼", "sector": "유통",
+      "current_price": 79500, "shares_outstanding": 65000000,
+      "eps": 8000, "bps": 95000, "sps": 5000, "dps": 1000, "roe": 0.084,
+      "revenue": 320000000000, "operating_income": 250000000000,
+      "net_income": 520000000000, "ebitda": 280000000000,
+      "fcf": 150000000000, "net_debt": 1200000000000,
+      "growth_rate": 0.05
+    },
+    {
+      "ticker": "003490", "name": "대한항공", "sector": "유통",
+      "current_price": 22500, "shares_outstanding": 369000000,
+      "eps": 3500, "bps": 26000, "sps": 45000, "dps": 750, "roe": 0.135,
+      "revenue": 16700000000000, "operating_income": 1500000000000,
+      "net_income": 1290000000000, "ebitda": 4000000000000,
+      "fcf": 2000000000000, "net_debt": 11000000000000,
+      "growth_rate": 0.05
+    },
+    {
+      "ticker": "034730", "name": "SK", "sector": "IT서비스",
+      "current_price": 165000, "shares_outstanding": 73000000,
+      "eps": 8500, "bps": 305000, "sps": 1500000, "dps": 8000, "roe": 0.028,
+      "revenue": 110000000000000, "operating_income": 4000000000000,
+      "net_income": 620000000000, "ebitda": 8000000000000,
+      "fcf": 3000000000000, "net_debt": 25000000000000,
+      "growth_rate": 0.05
+    },
+    {
+      "ticker": "018260", "name": "삼성에스디에스", "sector": "IT서비스",
+      "current_price": 150000, "shares_outstanding": 77400000,
+      "eps": 11000, "bps": 90000, "sps": 175000, "dps": 2500, "roe": 0.122,
+      "revenue": 13550000000000, "operating_income": 850000000000,
+      "net_income": 850000000000, "ebitda": 1500000000000,
+      "fcf": 700000000000, "net_debt": -3000000000000,
+      "growth_rate": 0.08
+    },
+    {
+      "ticker": "003410", "name": "쌍용씨앤이", "sector": "철강",
+      "current_price": 6900, "shares_outstanding": 504000000,
+      "eps": 850, "bps": 5500, "sps": 30000, "dps": 440, "roe": 0.155,
+      "revenue": 1500000000000, "operating_income": 220000000000,
+      "net_income": 428000000000, "ebitda": 380000000000,
+      "fcf": 200000000000, "net_debt": 200000000000,
+      "growth_rate": 0.04
+    },
+    {
+      "ticker": "052330", "name": "KTDS", "sector": "IT서비스",
+      "_note": "KTDS 24.07 기업가치평가 시트 기준 (2023.12.31 결산)",
+      "current_price": 5000, "shares_outstanding": 2635797,
+      "eps": 10042, "bps": 43375, "sps": 252967, "dps": 0, "roe": 0.231,
+      "revenue": 666874294649, "operating_income": 40585933422,
+      "net_income": 26466913218, "ebitda": 48348386362,
+      "fcf": 49642073422, "net_debt": 47659000000,
+      "growth_rate": 0.025,
+      "market_cap": 13178985000,
+      "total_assets": 303328546000,
+      "total_liabilities": 188970519000,
+      "total_equity": 114358027000,
+      "wacc": 0.0215,
+      "peer_per_avg": 10.86,
+      "peer_pbr_avg": 1.09,
+      "peer_psr_avg": 0.50,
+      "peer_ev_ebitda_avg": 7.25,
+      "peers": [
+        {"name": "쌍용정보통신", "per": 10.69, "pbr": 0.92, "beta_52w": 0.36},
+        {"name": "신세계I&C",  "per": 6.84,  "pbr": 0.42, "beta_52w": 0.54},
+        {"name": "더존비즈온", "per": 25.92, "pbr": 1.94, "beta_52w": -0.6}
+      ]
+    }
+  ]
+}

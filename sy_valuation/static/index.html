@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SY Valuation — 기업가치평가 시스템</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo">▲</span>
+      <span>SY Valuation</span>
+      <span class="version">v0.1</span>
+    </div>
+    <div class="search-wrap">
+      <input id="globalSearch" type="text" placeholder="종목명 또는 코드 검색 (예: 삼성전자 / 005930)" />
+      <button id="globalSearchBtn">검색</button>
+    </div>
+    <div class="status" id="status">초기화 중…</div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar">
+      <a href="#/dashboard"   class="nav-item" data-route="dashboard">📊 대시보드</a>
+      <a href="#/undervalued" class="nav-item" data-route="undervalued">💎 저평가 Top 10</a>
+      <a href="#/search"      class="nav-item" data-route="search">🔍 종목 가치평가</a>
+      <a href="#/recommend"   class="nav-item" data-route="recommend">🧭 투자 추천</a>
+      <a href="#/sy-screener" class="nav-item" data-route="sy-screener">⭐ SY 평가법 저평가</a>
+      <a href="#/sy-detail"   class="nav-item" data-route="sy-detail">📋 SY 평가법 상세</a>
+      <a href="#/news"        class="nav-item" data-route="news">📰 토픽 뉴스</a>
+      <div class="legend">
+        <h4>가치평가 모델</h4>
+        <ul>
+          <li>DCF · 잉여현금흐름 할인</li>
+          <li>RIM · 잔여이익모형</li>
+          <li>Multiples · PER/PBR/PSR/EV·EBITDA</li>
+          <li>Graham · 보수적 적정주가</li>
+          <li>Lynch · PEG=1 적정가</li>
+        </ul>
+        <h4>데이터 소스</h4>
+        <ul>
+          <li>DART (재무제표) — 옵션</li>
+          <li>Naver / Google News (뉴스)</li>
+          <li>Yahoo Finance (시세, 원물)</li>
+          <li>샘플 재무 (오프라인)</li>
+        </ul>
+      </div>
+    </nav>
+
+    <main id="content"></main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
