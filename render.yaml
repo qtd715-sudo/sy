@@ -14,9 +14,10 @@ services:
     plan: free              # 무료 (15분 미사용 시 sleep, 첫 요청에 ~30s wake)
     buildCommand: "echo 'no build needed (stdlib only)'"
     startCommand: "python -m sy_valuation.run"
-    pythonVersion: "3.11"
     autoDeploy: true        # main 푸시 시 자동 재배포
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       - key: PYTHONUNBUFFERED
         value: "1"
       - key: PYTHONIOENCODING
