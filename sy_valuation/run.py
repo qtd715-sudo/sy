@@ -15,9 +15,11 @@ if str(_HERE.parent) not in sys.path:
 from sy_valuation.server import serve
 
 if __name__ == "__main__":
-    import argparse
+    import argparse, os
     p = argparse.ArgumentParser(description="SY 기업가치평가 시스템 서버")
-    p.add_argument("--host", default="0.0.0.0", help="0.0.0.0=LAN open, 127.0.0.1=local only")
-    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"),
+                   help="0.0.0.0=LAN/cloud open, 127.0.0.1=local only")
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")),
+                   help="default 8765, cloud platforms inject PORT")
     args = p.parse_args()
     serve(args.host, args.port)

@@ -312,6 +312,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(app.sy_evaluate(params.get("q", "")))
             if path == "/api/sy/undervalued":
                 return self._send_json(app.sy_undervalued(n=int(params.get("n", 10))))
+            if path == "/api/prefetch":
+                # 외부 cron(GitHub Actions 등)이 호출. 모든 백그라운드 잡 즉시 실행
+                s = app.scheduler
+                results = {
+                    "news":   s._job_news(),
+                    "market": s._job_market(),
+                    "hot":    s._job_hot_tickers(),
+                }
+                import time
+                for k in results.keys():
+                    s._last_runs[k] = time.time()
+                return self._send_json({"ok": True, "results": results, "ts": time.time()})
             if path == "/api/news":
                 return self._send_json(app.news_search(params.get("q", ""), n=int(params.get("n", 10))))
             if path == "/api/market-news":

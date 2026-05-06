@@ -13,24 +13,72 @@ KTDS 24.07 기업가치 평가 시트 방법론을 웹 시스템으로 확장.
 - **종목 커버리지**: 한국 KOSPI/KOSDAQ 130+, 미국 주식 60+, ETF 50+
 - **자동완성 검색** + 실시간 가격 갱신 + DART/Yahoo 실시간 재무 fetch
 
-## 빠른 시작
+## 어디서든 접속하기 (핸드폰/외부) — 클라우드 배포
+
+> **권장**: Render.com (무료, 5분 셋업) + GitHub Actions cron (배치 자동 실행)
+> 결과: `https://sy-valuation.onrender.com` 같은 고정 URL 로 어디서든 접속.
+
+### 방법 ① Render.com (가장 쉬움, 추천 ⭐)
+
+1. <https://render.com> 가입 (GitHub 계정으로 로그인)
+2. Dashboard → **New +** → **Blueprint**
+3. 저장소 선택 → `qtd715-sudo/sy` → **Apply**
+4. 자동으로 [render.yaml](render.yaml) 읽어 배포 (3분)
+5. 발급된 URL 복사 (예: `https://sy-valuation.onrender.com`)
+
+**배치 매일 자동 실행** (서버 sleep 방지):
+1. GitHub 저장소 → Settings → Secrets and variables → Actions → **Variables** 탭
+2. **New repository variable** → Name: `SY_URL`, Value: 위에서 복사한 URL
+3. 끝. [.github/workflows/keepalive.yml](.github/workflows/keepalive.yml) 이 매 14분 ping + 매일 03:00 KST 강제 prefetch
+
+### 방법 ② Fly.io (always-on 무료, 카드 필요)
+
+```powershell
+# flyctl 설치: https://fly.io/docs/flyctl/install/
+flyctl auth login
+flyctl launch --copy-config --no-deploy
+flyctl volumes create sy_data --region nrt --size 1
+flyctl deploy
+# → https://sy-valuation.fly.dev
+```
+
+설정: [fly.toml](fly.toml). 도쿄 리전 (한국과 가까움), 영속 볼륨 1GB.
+
+### 방법 ③ 본인 PC + Cloudflare Tunnel (PC 켜둘 때만 동작)
+
+```powershell
+python sy_valuation\run.py
+# 다른 터미널에서:
+sy_valuation\tunnel.bat   # cloudflared/ngrok 자동
+```
+
+### 방법 ④ 로컬만 사용
 
 ```powershell
 python sy_valuation\run.py
 ```
 
-서버가 시작되면 콘솔에 접근 가능한 URL 들이 표시됩니다:
+서버 실행 시 콘솔에 표시되는 URL:
 
-| 접속 범위 | URL 예시 | 비고 |
-|---|---|---|
-| 본인 PC | http://127.0.0.1:8765/ | 항상 가능 |
-| 같은 Wi-Fi (LAN) | http://**172.10.53.92**:8765/ | 폰/태블릿 등에서 접속, IP는 PC마다 다름 |
-| 인터넷 (외부) | cloudflared/ngrok 터널 필요 | `sy_valuation\tunnel.bat` 참고 |
+| 접속 범위 | URL 예시 |
+|---|---|
+| 본인 PC | http://127.0.0.1:8765/ |
+| 같은 Wi-Fi (LAN) | http://**172.10.53.92**:8765/ |
 
-**자동 갱신**: 백그라운드 스케줄러가 뉴스(1h), 원자재(5min), 핫티커(30min) 를 자동 prefetch.
-SQLite 캐시(`data/cache.db`) 에 저장돼 서버 재시작에도 유지됨.
+---
 
-**부팅 시 자동 시작**: `sy_valuation\install_task.bat` 실행 (Windows 작업스케줄러 등록).
+## 자동 데이터 갱신 (배치)
+
+**클라우드 배포** 시:
+- 서버 안 백그라운드 스케줄러 + GitHub Actions cron 이중 안전망
+- 뉴스 1시간 / 원자재 5분 / 핫티커 30분 / 매일 03:00 강제 전체 prefetch
+- SQLite (`data/cache.db`) 또는 Fly volume 에 영속 저장
+
+**로컬 PC** 시:
+- 동일 백그라운드 스케줄러 동작 (서버 켜져 있는 동안)
+- 부팅 시 자동 시작: `sy_valuation\install_task.bat`
+
+---
 
 표준 라이브러리만으로 동작 (Python 3.10+). 외부 패키지 불필요.
 상세 문서: [sy_valuation/README.md](sy_valuation/README.md)
