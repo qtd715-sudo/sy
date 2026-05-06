@@ -17,8 +17,20 @@ KTDS 24.07 기업가치 평가 시트 방법론을 웹 시스템으로 확장.
 
 ```powershell
 python sy_valuation\run.py
-# → http://127.0.0.1:8765/
 ```
+
+서버가 시작되면 콘솔에 접근 가능한 URL 들이 표시됩니다:
+
+| 접속 범위 | URL 예시 | 비고 |
+|---|---|---|
+| 본인 PC | http://127.0.0.1:8765/ | 항상 가능 |
+| 같은 Wi-Fi (LAN) | http://**172.10.53.92**:8765/ | 폰/태블릿 등에서 접속, IP는 PC마다 다름 |
+| 인터넷 (외부) | cloudflared/ngrok 터널 필요 | `sy_valuation\tunnel.bat` 참고 |
+
+**자동 갱신**: 백그라운드 스케줄러가 뉴스(1h), 원자재(5min), 핫티커(30min) 를 자동 prefetch.
+SQLite 캐시(`data/cache.db`) 에 저장돼 서버 재시작에도 유지됨.
+
+**부팅 시 자동 시작**: `sy_valuation\install_task.bat` 실행 (Windows 작업스케줄러 등록).
 
 표준 라이브러리만으로 동작 (Python 3.10+). 외부 패키지 불필요.
 상세 문서: [sy_valuation/README.md](sy_valuation/README.md)

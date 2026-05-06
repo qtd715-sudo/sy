@@ -18,6 +18,7 @@ from dataclasses import dataclass, asdict
 from typing import Any
 
 from .http_util import fetch, fetch_json
+from .cache import get_cache
 
 
 @dataclass
@@ -139,41 +140,69 @@ class NewsConnector:
         q = self.TOPICS.get(topic, topic)
         return self.search(q, limit=limit)
 
-    _topic_cache: dict[str, tuple[float, list[NewsItem]]] = {}
-    _CACHE_TTL = 120  # 2분
+    _CACHE_TTL = 3600  # 1시간 (SQLite 영속 캐시)
 
-    def all_topics(self, per_topic: int = 4, parallel: int = 8) -> dict[str, list[NewsItem]]:
-        """병렬 fetch + 2분 캐시. 28 토픽이라 직렬은 너무 느림."""
+    def all_topics(
+        self, per_topic: int = 4, parallel: int = 8, force_refresh: bool = False,
+    ) -> dict[str, list[NewsItem]]:
+        """병렬 fetch + SQLite 1시간 캐시 (서버 재시작에도 유지).
+
+        force_refresh=True 면 캐시 무시하고 새로 가져옴 (prefetch 잡 등).
+        """
         import concurrent.futures
-        import time
-
+        cache = get_cache()
         topics = list(self.TOPICS.keys())
         out: dict[str, list[NewsItem]] = {}
-        now = time.time()
-
-        # 캐시에서 가져오기
         to_fetch: list[str] = []
-        for t in topics:
-            cached = self._topic_cache.get(t)
-            if cached and (now - cached[0]) < self._CACHE_TTL:
-                out[t] = cached[1][:per_topic]
-            else:
-                to_fetch.append(t)
+
+        if not force_refresh:
+            for t in topics:
+                cached = cache.get(f"news:topic:{t}")
+                if cached:
+                    items_raw, _meta = cached
+                    out[t] = [NewsItem(**it) for it in items_raw[:per_topic]]
+                else:
+                    to_fetch.append(t)
+        else:
+            to_fetch = topics
 
         if to_fetch:
-            def fetch(topic: str) -> tuple[str, list[NewsItem]]:
+            def do_fetch(topic: str) -> tuple[str, list[NewsItem]]:
                 try:
-                    return topic, self.topic_news(topic, limit=per_topic)
+                    return topic, self.topic_news(topic, limit=10)  # 넉넉히 받아 캐시
                 except Exception:
                     return topic, []
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as ex:
-                for topic, items in ex.map(fetch, to_fetch):
-                    out[topic] = items
-                    self._topic_cache[topic] = (now, items)
+                for topic, items in ex.map(do_fetch, to_fetch):
+                    cache.set(
+                        f"news:topic:{topic}",
+                        [it.to_dict() for it in items],
+                        ttl_sec=self._CACHE_TTL,
+                        source="google_news_rss" if not self.naver_id else "naver_api",
+                    )
+                    out[topic] = items[:per_topic]
 
-        # TOPICS 순서대로 재정렬
         return {t: out.get(t, []) for t in topics}
+
+    def cache_status(self) -> dict[str, Any]:
+        cache = get_cache()
+        keys = cache.keys("news:topic:")
+        latest_fetch = 0.0
+        oldest_fetch = float("inf")
+        for k in keys:
+            cached = cache.get(k)
+            if cached:
+                _, meta = cached
+                ts = meta.get("fetched_at", 0)
+                latest_fetch = max(latest_fetch, ts)
+                oldest_fetch = min(oldest_fetch, ts)
+        return {
+            "topics_cached": len(keys),
+            "topics_total": len(self.TOPICS),
+            "latest_fetch": latest_fetch if latest_fetch else None,
+            "oldest_fetch": oldest_fetch if oldest_fetch < float("inf") else None,
+        }
 
     def sentiment(self, items: list[NewsItem]) -> dict[str, float]:
         """간이 키워드 기반 감성 점수. -1.0 ~ +1.0"""

@@ -7,6 +7,8 @@ venv/
 .vscode/
 .idea/
 sy_valuation/data/cache/
+sy_valuation/data/cache.db
+sy_valuation/data/cache.db-*
 
 # DRM-protected internal Excel files (do not redistribute)
 *.xlsx1

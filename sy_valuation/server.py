@@ -31,10 +31,12 @@ from .data_sources import (
     FinancialsRepository, NewsConnector, CommodityConnector, PriceConnector, DartConnector,
     LiveFinancials,
 )
+from .data_sources.cache import get_cache
 from .valuation.engine import value_company
 from .valuation.sy_method import evaluate_sy
 from .valuation.sy_builder import build_inputs_from_raw
 from .recommender import find_undervalued, recommend_investment
+from .scheduler import Scheduler
 
 
 _ROOT = Path(__file__).resolve().parent
@@ -49,6 +51,7 @@ class App:
         self.price = PriceConnector()
         self.dart = DartConnector()
         self.live = LiveFinancials()
+        self.scheduler = Scheduler(self)
 
     # ---------- API handlers ----------
 
@@ -59,6 +62,9 @@ class App:
             "naver_news_enabled": bool(self.news.naver_id),
             "tickers_loaded": len(self.repo.list_tickers()),
             "samples_loaded": len(self.repo.all()),
+            "scheduler": self.scheduler.status(),
+            "cache": get_cache().stats(),
+            "news_cache": self.news.cache_status(),
         }
 
     def tickers(self) -> list[dict[str, str]]:
@@ -337,21 +343,54 @@ class Handler(BaseHTTPRequestHandler):
         return self._not_found()
 
 
-def serve(host: str = "127.0.0.1", port: int = 8765) -> None:
+def _local_ips() -> list[str]:
+    """현재 머신의 LAN IP 추출."""
+    import socket
+    ips: list[str] = []
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None):
+            ip = info[4][0]
+            if ":" in ip:  # IPv6 skip
+                continue
+            if ip.startswith("127."):
+                continue
+            if ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+    return ips
+
+
+def serve(host: str = "0.0.0.0", port: int = 8765) -> None:
+    # 백그라운드 prefetch 스케줄러 시작
+    app = get_app()
+    app.scheduler.start()
+
     httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"  ▶ SY Valuation server: http://{host}:{port}")
-    print(f"  ▶ 종료: Ctrl+C")
+    print(f"\n  ▶ SY Valuation 서버 실행 중")
+    print(f"     로컬:   http://127.0.0.1:{port}/")
+    if host in ("0.0.0.0", ""):
+        for ip in _local_ips():
+            print(f"     LAN:    http://{ip}:{port}/   (같은 와이파이/공유기에 연결된 기기)")
+        print(f"\n     외부(인터넷)에서도 열려면 별도 터널이 필요합니다:")
+        print(f"       1) cloudflared:  cloudflared tunnel --url http://localhost:{port}")
+        print(f"       2) ngrok:        ngrok http {port}")
+        print(f"       3) sy_valuation\\tunnel.bat  (자동 실행 헬퍼)")
+    print(f"\n     스케줄러: 뉴스 1h / 원자재 5min / 시세 30min 자동 갱신")
+    print(f"     종료: Ctrl+C\n")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n  ▶ 서버 종료")
+        app.scheduler.stop()
         httpd.server_close()
 
 
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--host", default="0.0.0.0", help="0.0.0.0 = LAN open, 127.0.0.1 = local only")
     p.add_argument("--port", type=int, default=8765)
     args = p.parse_args()
     serve(args.host, args.port)
