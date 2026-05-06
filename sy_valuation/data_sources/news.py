@@ -13,10 +13,11 @@ import json
 import os
 import re
 import urllib.parse
-import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, asdict
 from typing import Any
+
+from .http_util import fetch, fetch_json
 
 
 @dataclass
@@ -55,14 +56,12 @@ class NewsConnector:
 
     def _search_naver(self, query: str, limit: int) -> list[NewsItem]:
         url = f"{self.NAVER_API}?query={urllib.parse.quote(query)}&display={limit}&sort=date"
-        req = urllib.request.Request(url, headers={
+        headers = {
             "X-Naver-Client-Id": self.naver_id,
             "X-Naver-Client-Secret": self.naver_secret,
-        })
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except Exception:
+        }
+        data = fetch_json(url, timeout=self.timeout, headers=headers)
+        if not data:
             return []
         out = []
         for it in data.get("items", []):
@@ -77,11 +76,8 @@ class NewsConnector:
 
     def _search_google(self, query: str, limit: int) -> list[NewsItem]:
         url = self.GOOGLE_RSS.format(q=urllib.parse.quote(query))
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                data = resp.read()
-        except Exception:
+        data = fetch(url, timeout=self.timeout)
+        if not data:
             return []
         try:
             root = ET.fromstring(data)
@@ -105,33 +101,79 @@ class NewsConnector:
         return self.search("코스피 OR 미국증시 OR 환율 OR 금리", limit=limit)
 
     TOPICS = {
-        "코스피":     "코스피 OR KOSPI",
-        "코스닥":     "코스닥 OR KOSDAQ",
-        "미국증시":   "S&P500 OR 나스닥 OR 다우",
-        "환율":       "환율 OR 달러 OR 원달러",
-        "금리/채권":  "기준금리 OR 미국채 OR FOMC OR 한국은행",
-        "원유/에너지":"WTI OR 유가 OR 원유 OR OPEC",
-        "금속/금":    "금값 OR 구리 OR 니켈",
-        "반도체":     "반도체 OR HBM OR D램 OR TSMC",
-        "2차전지":    "2차전지 OR 배터리 OR 양극재 OR LFP",
-        "AI":         "AI OR 인공지능 OR 엔비디아 OR NVIDIA",
-        "부동산":     "부동산 OR 아파트 OR 분양",
-        "가상자산":   "비트코인 OR 이더리움 OR 가상자산 OR 코인",
-        "ETF":        "ETF OR 상장지수펀드",
+        # 시장
+        "코스피":           "코스피 OR KOSPI",
+        "코스닥":           "코스닥 OR KOSDAQ",
+        "미국증시":         "S&P500 OR 나스닥 OR 다우 OR 미국증시",
+        "유럽증시":         "DAX OR FTSE OR 유럽증시 OR 유로스톡스",
+        "일본증시":         "닛케이 OR 일본증시 OR 도쿄증시",
+        "중국증시":         "상하이종합 OR 항셍 OR 중국증시",
+        "환율":             "환율 OR 달러 OR 원달러 OR 원/달러",
+        "금리/채권":        "기준금리 OR 미국채 OR FOMC OR 한국은행 OR 금통위",
+        "원유/에너지":      "WTI OR 유가 OR 원유 OR OPEC OR 천연가스",
+        "금속/원자재":      "금값 OR 구리 OR 니켈 OR 알루미늄 OR 리튬",
+        "농산물":           "곡물 OR 옥수수 OR 대두 OR 커피 OR 설탕",
+        # 산업/테마
+        "반도체":           "반도체 OR HBM OR D램 OR TSMC OR 파운드리",
+        "2차전지":          "2차전지 OR 배터리 OR 양극재 OR LFP OR 음극재",
+        "AI":               "AI OR 인공지능 OR 엔비디아 OR NVIDIA OR 챗GPT",
+        "바이오":           "바이오 OR 신약 OR 임상 OR 제약",
+        "자동차":           "전기차 OR 자동차 OR 현대차 OR 테슬라",
+        "조선/방산":        "조선 OR 방산 OR K-방산 OR 함정",
+        "엔터/콘텐츠":      "K-POP OR 엔터 OR 하이브 OR 드라마",
+        "부동산":           "부동산 OR 아파트 OR 분양 OR 청약",
+        "가상자산":         "비트코인 OR 이더리움 OR 가상자산 OR 코인 OR BTC",
+        "ETF":              "ETF OR 상장지수펀드",
+        # 정책/사회
+        "정부정책":         "정부정책 OR 정책발표 OR 국정과제 OR 부처",
+        "경제정책":         "경제정책 OR 거시정책 OR 재정정책 OR 추경",
+        "청년정책":         "청년정책 OR 청년지원 OR 청년창업 OR 청년일자리",
+        "서울청년정책":     "서울청년 OR 청년월세 OR 청년수당 OR 서울시 청년",
+        "주택정책":         "주택정책 OR 분양정책 OR 임대주택 OR LH",
+        "세제":             "세금 OR 세제개편 OR 종부세 OR 양도세",
+        "노동/일자리":      "일자리 OR 최저임금 OR 노동정책 OR 고용",
+        "복지":             "복지정책 OR 기초수급 OR 국민연금",
     }
 
     def topic_news(self, topic: str, limit: int = 8) -> list[NewsItem]:
         q = self.TOPICS.get(topic, topic)
         return self.search(q, limit=limit)
 
-    def all_topics(self, per_topic: int = 4) -> dict[str, list[NewsItem]]:
+    _topic_cache: dict[str, tuple[float, list[NewsItem]]] = {}
+    _CACHE_TTL = 120  # 2분
+
+    def all_topics(self, per_topic: int = 4, parallel: int = 8) -> dict[str, list[NewsItem]]:
+        """병렬 fetch + 2분 캐시. 28 토픽이라 직렬은 너무 느림."""
+        import concurrent.futures
+        import time
+
+        topics = list(self.TOPICS.keys())
         out: dict[str, list[NewsItem]] = {}
-        for topic in self.TOPICS:
-            try:
-                out[topic] = self.topic_news(topic, limit=per_topic)
-            except Exception:
-                out[topic] = []
-        return out
+        now = time.time()
+
+        # 캐시에서 가져오기
+        to_fetch: list[str] = []
+        for t in topics:
+            cached = self._topic_cache.get(t)
+            if cached and (now - cached[0]) < self._CACHE_TTL:
+                out[t] = cached[1][:per_topic]
+            else:
+                to_fetch.append(t)
+
+        if to_fetch:
+            def fetch(topic: str) -> tuple[str, list[NewsItem]]:
+                try:
+                    return topic, self.topic_news(topic, limit=per_topic)
+                except Exception:
+                    return topic, []
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as ex:
+                for topic, items in ex.map(fetch, to_fetch):
+                    out[topic] = items
+                    self._topic_cache[topic] = (now, items)
+
+        # TOPICS 순서대로 재정렬
+        return {t: out.get(t, []) for t in topics}
 
     def sentiment(self, items: list[NewsItem]) -> dict[str, float]:
         """간이 키워드 기반 감성 점수. -1.0 ~ +1.0"""

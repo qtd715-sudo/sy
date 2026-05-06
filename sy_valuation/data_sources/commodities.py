@@ -9,9 +9,10 @@
 
 from __future__ import annotations
 import json
-import urllib.request
 from dataclasses import dataclass, asdict
 from typing import Any
+
+from .http_util import fetch_json
 
 
 @dataclass
@@ -103,11 +104,8 @@ class CommodityConnector:
 
     def fetch(self, symbol: str, name: str = "", currency: str = "") -> CommodityQuote | None:
         url = self.YAHOO_CHART.format(sym=symbol)
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except Exception:
+        data = fetch_json(url, timeout=self.timeout)
+        if not data:
             return None
         try:
             result = data["chart"]["result"][0]

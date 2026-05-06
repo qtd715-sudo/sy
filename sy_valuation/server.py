@@ -71,19 +71,21 @@ class App:
         """샘플 → live → None 순으로 시도."""
         f = self.repo.get_or_build_financials(query, live=self.live)
         if not f:
-            return None, None
+            return None, None, None
         # 실시간 가격으로 최신화
+        quote_info = None
         try:
             q = self.price.quote(f.ticker)
             if q and q.price > 0:
                 f.current_price = q.price
+                quote_info = q.to_dict()
         except Exception:
             pass
         meta = self.repo.get_ticker_meta(f.ticker) or {}
-        return f, meta
+        return f, meta, quote_info
 
     def valuation(self, query: str) -> dict[str, Any]:
-        f, meta = self._resolve_financials(query)
+        f, meta, quote = self._resolve_financials(query)
         if not f:
             suggestions = self.repo.search(query, limit=5)
             return {
@@ -106,6 +108,7 @@ class App:
             },
             "valuation": v.to_dict(),
             "live": f.ticker not in self.repo._by_ticker,
+            "quote": quote,
         }
 
     def undervalued(self, n: int = 10, strict: bool = True) -> list[dict[str, Any]]:
@@ -152,7 +155,7 @@ class App:
         return out[:n]
 
     def recommend(self, query: str) -> dict[str, Any]:
-        f, meta = self._resolve_financials(query)
+        f, meta, quote = self._resolve_financials(query)
         if not f:
             return {
                 "error": f"종목을 찾을 수 없습니다: {query}",
@@ -183,6 +186,7 @@ class App:
             "valuation": v.to_dict(),
             "recommendation": rec.to_dict(),
             "news": [n.to_dict() for n in news_items[:5]],
+            "quote": quote,
         }
 
     def news_search(self, q: str, n: int = 10) -> dict[str, Any]:

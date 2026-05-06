@@ -6,10 +6,10 @@ Yahoo Finance v8 chart + v10 quoteSummary 두 엔드포인트 사용.
 
 from __future__ import annotations
 import json
-import urllib.request
 from typing import Any
 
 from ..valuation.engine import Financials
+from .http_util import fetch_json
 
 
 class LiveFinancials:
@@ -37,12 +37,7 @@ class LiveFinancials:
         return [ticker]
 
     def _get(self, url: str) -> dict[str, Any] | None:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            return None
+        return fetch_json(url, timeout=self.timeout)
 
     def _summary(self, sym: str) -> dict[str, Any] | None:
         url = self.SUMMARY.format(sym=sym, mods=self.MODULES)

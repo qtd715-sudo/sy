@@ -362,11 +362,23 @@ async function loadSearch(q) {
 function renderValuationDetail(data) {
   const f = data.financials;
   const v = data.valuation;
+  const q = data.quote || null;
   const ratingCls = v.rating === "STRONG_BUY" ? "strong-buy" : v.rating === "BUY" ? "buy" : v.rating === "HOLD" ? "hold" : "sell";
 
   const liveBadge = data.live ? `<span class="tag" style="background:rgba(124,92,255,0.2);color:var(--accent-2);margin-left:8px">LIVE</span>` : "";
   const assetBadge = f.asset === "etf" ? `<span class="tag" style="background:rgba(245,166,35,0.2);color:var(--warn);margin-left:8px">ETF</span>` : "";
   const xchg = f.exchange ? `<span class="muted" style="margin-left:8px">${escapeHtml(f.exchange)}</span>` : "";
+
+  let priceSubtext = "";
+  if (q && q.traded_at) {
+    const ts = new Date(q.traded_at);
+    const timeStr = isNaN(ts) ? q.traded_at : ts.toLocaleString("ko-KR", { hour: "2-digit", minute: "2-digit", month: "numeric", day: "numeric" });
+    const chgCls = q.change_pct >= 0 ? "pos" : "neg";
+    const status = q.market_status === "OPEN" ? `<span class="pos">● 장중</span>` : (q.market_status === "CLOSE" ? "장마감" : (q.market_status || ""));
+    priceSubtext = `<span class="${chgCls}">${q.change_pct >= 0 ? "+" : ""}${(q.change_pct||0).toFixed(2)}%</span> · ${timeStr} · ${status} · <span class="muted">${q.source || ""}</span>`;
+  } else if (q === null || (q && !q.traded_at)) {
+    priceSubtext = `<span class="muted">정적 샘플가 (실시간 fetch 실패)</span>`;
+  }
 
   const modelEntries = Object.entries(v.by_model || {}).map(([k, val]) => ({
     name: k, value: val, weight: (v.weights && v.weights[k]) || 0,
@@ -378,7 +390,7 @@ function renderValuationDetail(data) {
   return `
     <div class="grid-4">
       <div class="kpi"><div class="label">종목</div><div class="value">${escapeHtml(f.name)} ${liveBadge}${assetBadge}</div><div class="sub">${f.ticker}${xchg} · ${escapeHtml(f.sector)}</div></div>
-      <div class="kpi"><div class="label">현재가</div><div class="value">${priceFmt(f.current_price)}</div></div>
+      <div class="kpi"><div class="label">현재가</div><div class="value">${priceFmt(f.current_price)}</div><div class="sub">${priceSubtext}</div></div>
       <div class="kpi"><div class="label">적정주가</div><div class="value">${priceFmt(v.fair_price)}</div><div class="sub">9개 모델 가중평균</div></div>
       <div class="kpi"><div class="label">상승여력</div><div class="value ${v.upside>=0?'pos':'neg'}">${fmt.pct(v.upside)}</div><div class="sub"><span class="tag ${ratingCls}">${v.rating}</span></div></div>
     </div>
