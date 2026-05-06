@@ -1,0 +1,14 @@
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.vscode
+.idea
+README.md
+sy_valuation/data/cache/
+sy_valuation/data/cache.db*
+*.xlsx1
+기업가치평가_*.xlsx*

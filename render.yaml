@@ -1,0 +1,31 @@
+# Render.com 1-click 배포 Blueprint
+# 사용법:
+#   1) https://render.com 가입 (GitHub 로 로그인)
+#   2) Dashboard → New + → Blueprint
+#   3) https://github.com/qtd715-sudo/sy 저장소 선택
+#   4) 자동으로 이 파일을 읽어 배포
+#   5) ~3분 후 https://sy-valuation.onrender.com 같은 URL 발급
+
+services:
+  - type: web
+    name: sy-valuation
+    runtime: python
+    region: singapore       # 한국에서 가장 가까움 (Naver Finance 호환성↑)
+    plan: free              # 무료 (15분 미사용 시 sleep, 첫 요청에 ~30s wake)
+    buildCommand: "echo 'no build needed (stdlib only)'"
+    startCommand: "python -m sy_valuation.run"
+    pythonVersion: "3.11"
+    autoDeploy: true        # main 푸시 시 자동 재배포
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONIOENCODING
+        value: "utf-8"
+      # 옵션: DART API 키 (Render Dashboard 의 Environment 에서 설정 권장)
+      # - key: DART_API_KEY
+      #   sync: false
+      # - key: NAVER_CLIENT_ID
+      #   sync: false
+      # - key: NAVER_CLIENT_SECRET
+      #   sync: false
+    healthCheckPath: /api/health

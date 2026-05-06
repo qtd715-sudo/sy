@@ -1,0 +1,45 @@
+# Fly.io 배포 (always-on 무료 티어)
+# 사용법:
+#   1) https://fly.io 가입 + Visa 카드 등록 (무료 티어 사용에도 카드 필요)
+#   2) flyctl 설치: https://fly.io/docs/flyctl/install/
+#   3) PowerShell 에서:
+#        flyctl auth login
+#        flyctl launch --no-deploy --copy-config --name sy-valuation
+#        flyctl volumes create sy_data --region nrt --size 1
+#        flyctl deploy
+#   4) https://sy-valuation.fly.dev 접속
+
+app = "sy-valuation"
+primary_region = "nrt"   # 도쿄 (한국과 가장 가까움)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  PYTHONUNBUFFERED = "1"
+  PYTHONIOENCODING = "utf-8"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines  = "stop"   # 무료 티어: 미사용 시 정지 (cron 으로 깨움)
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.checks]
+    [[http_service.checks]]
+      interval = "30s"
+      timeout = "5s"
+      grace_period = "10s"
+      method = "GET"
+      path = "/api/health"
+
+[[mounts]]
+  source = "sy_data"
+  destination = "/app/sy_valuation/data/cache"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
