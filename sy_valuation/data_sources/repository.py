@@ -46,6 +46,11 @@ class FinancialsRepository:
         self._by_ticker = {c["ticker"]: c for c in self._companies}
         self._by_name = {c["name"]: c for c in self._companies}
 
+        # 매번 재로드 시 누적되지 않게 초기화
+        self._tickers = []
+        self._lite_by_ticker = {}
+        self._lite_by_name = {}
+
         seen: set[tuple[str, str]] = set()
         if self.tickers_path.exists():
             with open(self.tickers_path, "r", encoding="utf-8") as f:
@@ -195,23 +200,39 @@ class FinancialsRepository:
             return None
         return self.to_financials(raw)
 
-    def get_or_build_financials(self, query: str, live=None) -> Financials | None:
-        """샘플에 있으면 그대로, 없으면 live 데이터로 즉석 빌드."""
+    def get_or_build_financials(self, query: str, live=None, naver=None) -> Financials | None:
+        """샘플 → Naver Finance (한국 6자리 코드) → Yahoo (글로벌) → None."""
         f = self.get_financials(query)
         if f:
             return f
-        if live is None:
-            return None
+
         meta = self.get_ticker_meta(query)
         if not meta:
             return None
-        sector = meta.get("sector", "기타")
+        sector = meta.get("sector") or "기타"
         s = self._sectors.get(sector, {"per": 12.0, "pbr": 1.0, "psr": 1.0, "ev_ebitda": 8.0})
-        try:
-            built = live.build_financials(meta["ticker"], meta["name"], sector, s)
-        except Exception:
-            return None
-        return built
+        ticker = meta["ticker"]
+        name = meta["name"]
+
+        # 1) Naver (한국 종목 6자리)
+        if naver is not None and ticker.isdigit() and len(ticker) == 6:
+            try:
+                built = naver.build_financials(ticker, name, sector, s)
+                if built and built.current_price > 0:
+                    return built
+            except Exception:
+                pass
+
+        # 2) Yahoo (해외 + 한국 폴백)
+        if live is not None:
+            try:
+                built = live.build_financials(ticker, name, sector, s)
+                if built:
+                    return built
+            except Exception:
+                pass
+
+        return None
 
     def all_financials(self) -> list[Financials]:
         return [self.to_financials(c) for c in self._companies]

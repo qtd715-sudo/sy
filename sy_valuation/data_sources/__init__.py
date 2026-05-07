@@ -9,6 +9,7 @@ from .commodities import CommodityConnector
 from .price import PriceConnector
 from .dart import DartConnector
 from .live import LiveFinancials
+from .naver_fundamentals import NaverFundamentals
 
 __all__ = [
     "FinancialsRepository",
@@ -17,4 +18,5 @@ __all__ = [
     "PriceConnector",
     "DartConnector",
     "LiveFinancials",
+    "NaverFundamentals",
 ]

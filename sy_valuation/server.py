@@ -29,7 +29,7 @@ from typing import Any
 
 from .data_sources import (
     FinancialsRepository, NewsConnector, CommodityConnector, PriceConnector, DartConnector,
-    LiveFinancials,
+    LiveFinancials, NaverFundamentals,
 )
 from .data_sources.cache import get_cache
 from .valuation.engine import value_company
@@ -51,6 +51,7 @@ class App:
         self.price = PriceConnector()
         self.dart = DartConnector()
         self.live = LiveFinancials()
+        self.naver = NaverFundamentals()
         self.scheduler = Scheduler(self)
 
     # ---------- API handlers ----------
@@ -74,8 +75,8 @@ class App:
         return self.repo.search(q, limit=limit)
 
     def _resolve_financials(self, query: str):
-        """샘플 → live → None 순으로 시도."""
-        f = self.repo.get_or_build_financials(query, live=self.live)
+        """샘플 → Naver → Yahoo → None 순으로 시도."""
+        f = self.repo.get_or_build_financials(query, live=self.live, naver=self.naver)
         if not f:
             return None, None, None
         # 실시간 가격으로 최신화
@@ -124,27 +125,61 @@ class App:
     def sy_evaluate(self, query: str) -> dict[str, Any]:
         raw = self.repo.find(query)
         if not raw:
-            return {
-                "error": f"종목을 찾을 수 없습니다: {query}",
-                "suggestions": self.repo.search(query, limit=5),
-                "hint": "SY 평가법은 자산/부채/시총/피어 정보가 필요합니다. 샘플 financials 에 등록된 종목만 평가 가능합니다.",
-            }
+            # 샘플에 없으면 Naver 실시간 데이터로 raw 빌드 시도
+            meta = self.repo.get_ticker_meta(query)
+            if meta and meta["ticker"].isdigit() and len(meta["ticker"]) == 6:
+                info = self.naver.fetch(meta["ticker"])
+                if info:
+                    from .data_sources.naver_fundamentals import _to_won
+                    price = _to_won(info.get("lastClosePrice", ""))
+                    eps = _to_won(info.get("eps", ""))
+                    bps = _to_won(info.get("bps", ""))
+                    mcap = _to_won(info.get("marketValue", ""))
+                    div = _to_won(info.get("dividend", ""))
+                    shares = mcap / price if price > 0 else 0
+                    if price > 0 and shares > 0:
+                        raw = {
+                            "ticker": meta["ticker"],
+                            "name": meta["name"],
+                            "sector": meta.get("sector") or "기타",
+                            "current_price": price,
+                            "shares_outstanding": shares,
+                            "eps": eps, "bps": bps,
+                            "sps": 0, "dps": div,
+                            "roe": (eps / bps) if bps > 0 else 0.0,
+                            "revenue": 0, "operating_income": 0,
+                            "net_income": eps * shares if eps > 0 else 0,
+                            "ebitda": 0, "fcf": 0, "net_debt": 0,
+                            "growth_rate": 0.05,
+                            "market_cap": mcap,
+                            "_live": True,
+                        }
+            if not raw:
+                return {
+                    "error": f"종목을 찾을 수 없습니다: {query}",
+                    "suggestions": self.repo.search(query, limit=5),
+                    "hint": "Naver Finance에서도 데이터를 가져오지 못했습니다.",
+                }
         sectors = self.repo.sector_table()
-        sector_mults = sectors.get(raw["sector"], {})
+        sector_mults = sectors.get(raw.get("sector", ""), {})
         try:
             q = self.price.quote(raw["ticker"])
             if q and q.price > 0 and raw.get("shares_outstanding"):
                 raw = dict(raw)
                 raw["current_price"] = q.price
-                if "market_cap" not in raw:
+                if not raw.get("market_cap"):
                     raw["market_cap"] = q.price * raw["shares_outstanding"]
         except Exception:
             pass
-        # 자동 피어 선정용 universe = 샘플 전체
         universe = self.repo.all()
         inp = build_inputs_from_raw(raw, sector_mults, universe=universe)
         result = evaluate_sy(inp)
-        return result.to_dict()
+        out = result.to_dict()
+        if raw.get("_live"):
+            out["notes"] = (out.get("notes") or []) + [
+                "실시간 Naver 데이터 기반 — 자산/부채/EBITDA 등 일부 필드 부재로 수익가치/자산가치 부정확할 수 있음. 정확평가는 DART 키 필요."
+            ]
+        return out
 
     def sy_undervalued(self, n: int = 10) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
