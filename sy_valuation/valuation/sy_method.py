@@ -107,6 +107,14 @@ class SyValuationResult:
     upside_max: float = 0.0
     rating: str = "HOLD"
 
+    # 주당 환산 (기업가치 / 발행주식수)
+    shares_outstanding: float = 0.0
+    current_price: float = 0.0
+    fair_price_min: float = 0.0       # enterprise_min / shares
+    fair_price_mid: float = 0.0       # enterprise_mid / shares  ★ 주당 적정가
+    fair_price_max: float = 0.0       # enterprise_max / shares
+    upside_per_share: float = 0.0     # (fair_price_mid - current_price) / current_price
+
     notes: list[str] = field(default_factory=list)
     inputs: dict[str, Any] = field(default_factory=dict)
     detail_rows: list[dict[str, Any]] = field(default_factory=list)
@@ -241,6 +249,13 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
     upside_mid = (enterprise_mid - mcap) / mcap
     upside_max = (enterprise_max - mcap) / mcap
 
+    # 주당 환산
+    shares = inp.shares_outstanding or (mcap / inp.current_price if inp.current_price > 0 else 0)
+    fair_min_ps = enterprise_min / shares if shares > 0 else 0
+    fair_mid_ps = enterprise_mid / shares if shares > 0 else 0
+    fair_max_ps = enterprise_max / shares if shares > 0 else 0
+    upside_ps = (fair_mid_ps - inp.current_price) / inp.current_price if inp.current_price > 0 else 0
+
     detail_rows = [
         {"approach": "수익가치", "method": "DCF (FCFF 10y)",        "value": dcf_val},
         {"approach": "수익가치", "method": "EBITDA × peer 멀티플",  "value": eb_mult},
@@ -278,6 +293,12 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
         upside_mid=round(upside_mid, 4),
         upside_max=round(upside_max, 4),
         rating=_rating(upside_mid),
+        shares_outstanding=round(shares, 0),
+        current_price=round(inp.current_price, 0),
+        fair_price_min=round(fair_min_ps, 0),
+        fair_price_mid=round(fair_mid_ps, 0),
+        fair_price_max=round(fair_max_ps, 0),
+        upside_per_share=round(upside_ps, 4),
         notes=notes,
         inputs=asdict(inp),
         detail_rows=[

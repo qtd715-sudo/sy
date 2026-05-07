@@ -578,21 +578,21 @@ async function renderSyScreener(root) {
 function renderSyScreenTable(list) {
   return `<table>
     <thead><tr>
-      <th>종목</th><th>섹터</th><th>시총</th>
-      <th>수익가치</th><th>자산가치</th><th>상대가치</th>
-      <th>종합 (min ~ mid ~ max)</th><th>상승여력 (mid)</th><th>등급</th>
+      <th>종목</th><th>섹터</th><th>현재가</th>
+      <th>⭐ 주당 적정가</th><th>주당 상승여력</th>
+      <th>시총</th><th>종합 기업가치</th>
+      <th>등급</th>
     </tr></thead>
     <tbody>${list.map(r => {
       const ratingCls = r.rating === "STRONG_BUY" ? "strong-buy" : r.rating === "BUY" || r.rating === "ACCUMULATE" ? "buy" : r.rating === "HOLD" ? "hold" : "sell";
       return `<tr data-q="${r.ticker}">
         <td><strong>${escapeHtml(r.name)}</strong> <span class="muted">${r.ticker}</span></td>
         <td class="muted">${escapeHtml(r.sector)}</td>
+        <td>${fmt.krw(r.current_price)}</td>
+        <td><strong style="color:var(--accent)">${fmt.krw(r.fair_price_mid)}</strong></td>
+        <td class="${r.upside_per_share >= 0 ? 'pos' : 'neg'}"><strong>${fmt.pct(r.upside_per_share)}</strong></td>
         <td>${bigKrwAuto(r.market_cap)}</td>
-        <td>${bigKrwAuto(r.income_mid)}</td>
-        <td>${bigKrwAuto(r.asset_book)}</td>
-        <td>${bigKrwAuto(r.market_mid)}</td>
-        <td>${bigKrwAuto(r.enterprise_min)} ~ <strong>${bigKrwAuto(r.enterprise_mid)}</strong> ~ ${bigKrwAuto(r.enterprise_max)}</td>
-        <td class="${r.upside_mid >= 0 ? 'pos' : 'neg'}">${fmt.pct(r.upside_mid)}</td>
+        <td>${bigKrwAuto(r.enterprise_mid)}</td>
         <td><span class="tag ${ratingCls}">${r.rating}</span></td>
       </tr>`;
     }).join("")}</tbody></table>`;
@@ -657,9 +657,20 @@ function renderSyDetailContent(d) {
   return `
     <div class="grid-4">
       <div class="kpi"><div class="label">종목</div><div class="value">${escapeHtml(d.name)}</div><div class="sub">${d.ticker} · ${escapeHtml(d.sector)}</div></div>
-      <div class="kpi"><div class="label">시가총액</div><div class="value">${bigKrwAuto(d.market_cap)}</div></div>
-      <div class="kpi"><div class="label">종합 기업가치 (mid)</div><div class="value">${bigKrwAuto(d.enterprise_mid)}</div><div class="sub">${bigKrwAuto(d.enterprise_min)} ~ ${bigKrwAuto(d.enterprise_max)}</div></div>
-      <div class="kpi"><div class="label">상승여력 (mid)</div><div class="value ${d.upside_mid>=0?'pos':'neg'}">${fmt.pct(d.upside_mid)}</div><div class="sub"><span class="tag ${ratingCls}">${d.rating}</span></div></div>
+      <div class="kpi"><div class="label">현재가</div><div class="value">${fmt.krw(d.current_price)}</div><div class="sub">시총 ${bigKrwAuto(d.market_cap)}</div></div>
+      <div class="kpi"><div class="label">⭐ 주당 적정가 (mid)</div><div class="value" style="color:var(--accent)">${fmt.krw(d.fair_price_mid)}</div><div class="sub">${fmt.krw(d.fair_price_min)} ~ ${fmt.krw(d.fair_price_max)}</div></div>
+      <div class="kpi"><div class="label">상승여력</div><div class="value ${d.upside_per_share>=0?'pos':'neg'}">${fmt.pct(d.upside_per_share)}</div><div class="sub"><span class="tag ${ratingCls}">${d.rating}</span></div></div>
+    </div>
+
+    <div class="card" style="background:rgba(79,209,197,0.06)">
+      <h3>⭐ 주당 적정가 = 종합 기업가치 ÷ 발행주식수</h3>
+      <table>
+        <tr class="no-hover"><td>종합 기업가치 (mid)</td><td><strong>${bigKrwAuto(d.enterprise_mid)}</strong></td></tr>
+        <tr class="no-hover"><td>÷ 발행주식수</td><td>${fmt.num(d.shares_outstanding, 0)} 주</td></tr>
+        <tr class="no-hover" style="background:var(--bg-elev-2)"><td><strong>= 주당 적정가</strong></td><td><strong style="color:var(--accent)">${fmt.krw(d.fair_price_mid)}</strong></td></tr>
+        <tr class="no-hover"><td>현재가</td><td>${fmt.krw(d.current_price)}</td></tr>
+        <tr class="no-hover"><td>주당 상승여력</td><td class="${d.upside_per_share>=0?'pos':'neg'}"><strong>${fmt.pct(d.upside_per_share)}</strong></td></tr>
+      </table>
     </div>
 
     <div class="card">
