@@ -126,16 +126,27 @@ class Scheduler:
     def _loop(self) -> None:
         # 서버 부팅 후 5초 뒤 첫 실행 (포트 바인딩 후)
         time.sleep(5)
-        # 부팅 직후 한 번 모두 실행
+        # 부팅 직후 모든 잡을 병렬로 실행 (서로 의존성 없음)
+        boot_threads = []
         for name, _interval, jobname in self.SCHEDULE:
-            getattr(self, jobname)()
-            self._last_runs[name] = time.time()
-        # 이후 정해진 간격마다
+            self._last_runs[name] = time.time()  # 표시는 시작 시각
+            t = threading.Thread(
+                target=getattr(self, jobname),
+                name=f"sy-boot-{name}",
+                daemon=True,
+            )
+            t.start()
+            boot_threads.append(t)
+        # 백그라운드 잡들이 알아서 끝나면 됨 — 메인 루프는 계속
         while not self._stop.is_set():
             now = time.time()
             for name, interval, jobname in self.SCHEDULE:
                 last = self._last_runs.get(name, 0)
                 if now - last >= interval:
-                    getattr(self, jobname)()
+                    threading.Thread(
+                        target=getattr(self, jobname),
+                        name=f"sy-{name}",
+                        daemon=True,
+                    ).start()
                     self._last_runs[name] = time.time()
-            self._stop.wait(30)  # 30초마다 폴링
+            self._stop.wait(30)
