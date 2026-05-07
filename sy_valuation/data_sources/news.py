@@ -40,6 +40,7 @@ def _strip_html(s: str) -> str:
 class NewsConnector:
     NAVER_API = "https://openapi.naver.com/v1/search/news.json"
     GOOGLE_RSS = "https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
+    BING_RSS = "https://www.bing.com/news/search?q={q}&format=rss&setLang=ko"
 
     def __init__(self, timeout: int = 6):
         self.timeout = timeout
@@ -47,45 +48,38 @@ class NewsConnector:
         self.naver_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
 
     def search(self, query: str, limit: int = 10) -> list[NewsItem]:
-        """Naver API (키있으면) → Naver 검색 스크레이핑 → Google News RSS 순서."""
+        """다중 fallback: Naver API → Bing News RSS → Google News RSS."""
         items: list[NewsItem] = []
         if self.naver_id and self.naver_secret:
             items = self._search_naver(query, limit)
         if not items:
-            items = self._search_naver_scrape(query, limit)
+            items = self._search_bing(query, limit)
         if not items:
             items = self._search_google(query, limit)
         return items[:limit]
 
-    def _search_naver_scrape(self, query: str, limit: int) -> list[NewsItem]:
-        """Naver 검색 결과 페이지 HTML 스크레이핑 (키 불필요)."""
-        url = f"https://search.naver.com/search.naver?where=news&query={urllib.parse.quote(query)}&sort=1"
+    def _search_bing(self, query: str, limit: int) -> list[NewsItem]:
+        """Bing News RSS — 한국어 검색 결과, 글로벌 IP 에서 안정적."""
+        url = self.BING_RSS.format(q=urllib.parse.quote(query))
         data = fetch(url, timeout=self.timeout)
         if not data:
             return []
         try:
-            html = data.decode("utf-8", errors="replace")
-        except Exception:
+            root = ET.fromstring(data)
+        except ET.ParseError:
             return []
-        # Naver 뉴스 결과 파싱: <a class="news_tit" href="..." title="..."> 또는 비슷한 구조
-        items: list[NewsItem] = []
-        # 제목 + 링크 추출 (클래스명 변경에 강건한 정규식)
-        pattern = re.compile(
-            r'<a[^>]+class="[^"]*news_tit[^"]*"[^>]+href="([^"]+)"[^>]*title="([^"]+)"',
-            re.IGNORECASE,
-        )
-        for m in pattern.finditer(html):
-            link, title = m.group(1), m.group(2)
-            items.append(NewsItem(
-                title=_strip_html(title),
-                link=link,
-                description="",
-                published="",
-                source="Naver",
+        out: list[NewsItem] = []
+        for item in root.findall("./channel/item"):
+            out.append(NewsItem(
+                title=_strip_html(item.findtext("title") or ""),
+                link=item.findtext("link") or "",
+                description=_strip_html(item.findtext("description") or ""),
+                published=item.findtext("pubDate") or "",
+                source="Bing News",
             ))
-            if len(items) >= limit:
+            if len(out) >= limit:
                 break
-        return items
+        return out
 
     def _search_naver(self, query: str, limit: int) -> list[NewsItem]:
         url = f"{self.NAVER_API}?query={urllib.parse.quote(query)}&display={limit}&sort=date"

@@ -332,6 +332,15 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/market-news":
                 return self._send_json(app.market_news(n=int(params.get("n", 10))))
             if path == "/api/news/topics":
+                # ?force=1 면 캐시 무시
+                force = params.get("force", "0") in ("1", "true", "True")
+                if force:
+                    return self._send_json({
+                        t: [it.to_dict() for it in items]
+                        for t, items in app.news.all_topics(
+                            per_topic=int(params.get("n", 4)), force_refresh=True,
+                        ).items()
+                    })
                 return self._send_json(app.news_topics(per_topic=int(params.get("n", 4))))
             if path == "/api/news/topic":
                 return self._send_json(app.news_topic(params.get("topic", "코스피"), n=int(params.get("n", 10))))
