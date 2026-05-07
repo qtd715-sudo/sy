@@ -118,38 +118,18 @@ class App:
             "quote": quote,
         }
 
-    def _refresh_prices(self, tickers: list[str], parallel: int = 12) -> dict[str, float]:
-        """캐시 우선 + 병렬 fetch. 결과 dict[ticker] = price."""
-        import concurrent.futures
+    def _refresh_prices(self, tickers: list[str]) -> dict[str, float]:
+        """캐시만 읽기 — 즉시 응답.
+        백그라운드 스케줄러가 모든 샘플 종목 가격을 5분/30분 주기로 prefetch.
+        캐시에 없는 종목은 정적 샘플 가격 사용 (첫 부팅 후 1~2분만 발생)."""
         cache = get_cache()
         out: dict[str, float] = {}
-        to_fetch: list[str] = []
         for t in tickers:
             cached = cache.get(f"price:{t}")
             if cached:
                 data, _ = cached
                 if data.get("price"):
                     out[t] = float(data["price"])
-                    continue
-            to_fetch.append(t)
-
-        if not to_fetch:
-            return out
-
-        def fetch_one(tk: str):
-            try:
-                q = self.price.quote(tk)
-                if q and q.price > 0:
-                    cache.set(f"price:{tk}", q.to_dict(), ttl_sec=900, source=q.source)
-                    return tk, q.price
-            except Exception:
-                pass
-            return tk, None
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as ex:
-            for tk, price in ex.map(fetch_one, to_fetch):
-                if price:
-                    out[tk] = price
         return out
 
     def undervalued(self, n: int = 10, strict: bool = True) -> list[dict[str, Any]]:

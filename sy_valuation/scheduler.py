@@ -107,7 +107,7 @@ class Scheduler:
                 pass
             return 0
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
             ok = sum(ex.map(fetch_one, all_tks))
         log.info("prefetched tickers: %d/%d", ok, len(all_tks))
         return ok
@@ -129,7 +129,7 @@ class Scheduler:
     SCHEDULE = [
         ("news",     3600,   "_job_news"),         # 1시간
         ("market",   300,    "_job_market"),       # 5분
-        ("hot",      1800,   "_job_hot_tickers"),  # 30분
+        ("hot",      300,    "_job_hot_tickers"),  # 5분 (샘플+핫 종목 가격 — 스크리너 즉시 응답용)
         ("krx_univ", 86400,  "_job_krx_universe"), # 24시간 — 코스피/코스닥 전종목
     ]
 
