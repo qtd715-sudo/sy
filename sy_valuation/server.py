@@ -118,16 +118,46 @@ class App:
             "quote": quote,
         }
 
-    def undervalued(self, n: int = 10, strict: bool = True) -> list[dict[str, Any]]:
-        # 샘플 종목 모두 실시간 가격으로 갱신 후 평가
-        financials = self.repo.all_financials()
-        for f in financials:
+    def _refresh_prices(self, tickers: list[str], parallel: int = 12) -> dict[str, float]:
+        """캐시 우선 + 병렬 fetch. 결과 dict[ticker] = price."""
+        import concurrent.futures
+        cache = get_cache()
+        out: dict[str, float] = {}
+        to_fetch: list[str] = []
+        for t in tickers:
+            cached = cache.get(f"price:{t}")
+            if cached:
+                data, _ = cached
+                if data.get("price"):
+                    out[t] = float(data["price"])
+                    continue
+            to_fetch.append(t)
+
+        if not to_fetch:
+            return out
+
+        def fetch_one(tk: str):
             try:
-                q = self.price.quote(f.ticker)
+                q = self.price.quote(tk)
                 if q and q.price > 0:
-                    f.current_price = q.price
+                    cache.set(f"price:{tk}", q.to_dict(), ttl_sec=900, source=q.source)
+                    return tk, q.price
             except Exception:
                 pass
+            return tk, None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as ex:
+            for tk, price in ex.map(fetch_one, to_fetch):
+                if price:
+                    out[tk] = price
+        return out
+
+    def undervalued(self, n: int = 10, strict: bool = True) -> list[dict[str, Any]]:
+        financials = self.repo.all_financials()
+        prices = self._refresh_prices([f.ticker for f in financials])
+        for f in financials:
+            if f.ticker in prices:
+                f.current_price = prices[f.ticker]
         results = find_undervalued(financials, top_n=n, strict=strict)
         return [r.to_dict() for r in results]
 
@@ -197,18 +227,15 @@ class App:
         out: list[dict[str, Any]] = []
         sectors = self.repo.sector_table()
         universe = self.repo.all()
-        # 모든 종목 실시간 가격으로 갱신 (시총 정확도)
+        # 병렬 + 캐시로 가격 갱신 (16초 → 1~3초)
+        prices = self._refresh_prices([raw["ticker"] for raw in universe])
         live_universe = []
         for raw in universe:
             raw = dict(raw)
-            try:
-                q = self.price.quote(raw["ticker"])
-                if q and q.price > 0:
-                    raw["current_price"] = q.price
-                    if raw.get("shares_outstanding"):
-                        raw["market_cap"] = q.price * raw["shares_outstanding"]
-            except Exception:
-                pass
+            if raw["ticker"] in prices:
+                raw["current_price"] = prices[raw["ticker"]]
+                if raw.get("shares_outstanding"):
+                    raw["market_cap"] = prices[raw["ticker"]] * raw["shares_outstanding"]
             live_universe.append(raw)
 
         for raw in live_universe:

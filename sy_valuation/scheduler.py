@@ -89,18 +89,27 @@ class Scheduler:
             return 0
 
     def _job_hot_tickers(self) -> int:
+        """핫티커 + 모든 샘플 종목 시세 prefetch (스크리너 즉시 응답용)."""
+        import concurrent.futures
         from .data_sources.cache import get_cache
         cache = get_cache()
-        ok = 0
-        for tk in HOT_TICKERS:
+        # 샘플 종목 모두 + 핫티커
+        sample_tks = [c["ticker"] for c in self.app.repo.all()]
+        all_tks = list(dict.fromkeys(HOT_TICKERS + sample_tks))
+
+        def fetch_one(tk: str):
             try:
                 q = self.app.price.quote(tk)
                 if q:
                     cache.set(f"price:{tk}", q.to_dict(), ttl_sec=900, source=q.source)
-                    ok += 1
+                    return 1
             except Exception:
-                continue
-        log.info("prefetched hot tickers: %d/%d", ok, len(HOT_TICKERS))
+                pass
+            return 0
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            ok = sum(ex.map(fetch_one, all_tks))
+        log.info("prefetched tickers: %d/%d", ok, len(all_tks))
         return ok
 
     def _job_krx_universe(self) -> int:
