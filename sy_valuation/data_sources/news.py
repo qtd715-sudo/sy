@@ -42,7 +42,7 @@ class NewsConnector:
     GOOGLE_RSS = "https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
     BING_RSS = "https://www.bing.com/news/search?q={q}&format=rss&setLang=ko"
 
-    def __init__(self, timeout: int = 6):
+    def __init__(self, timeout: int = 4):
         self.timeout = timeout
         self.naver_id = os.environ.get("NAVER_CLIENT_ID", "")
         self.naver_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
@@ -169,7 +169,7 @@ class NewsConnector:
     _CACHE_TTL = 3600  # 1시간 (SQLite 영속 캐시)
 
     def all_topics(
-        self, per_topic: int = 4, parallel: int = 8, force_refresh: bool = False,
+        self, per_topic: int = 4, parallel: int = 4, force_refresh: bool = False,
     ) -> dict[str, list[NewsItem]]:
         """병렬 fetch + SQLite 1시간 캐시 (서버 재시작에도 유지).
 
@@ -199,15 +199,28 @@ class NewsConnector:
                 except Exception:
                     return topic, []
 
+            # as_completed + 견고한 timeout (느린 토픽 하나가 전체를 막지 않게)
             with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as ex:
-                for topic, items in ex.map(do_fetch, to_fetch):
-                    cache.set(
-                        f"news:topic:{topic}",
-                        [it.to_dict() for it in items],
-                        ttl_sec=self._CACHE_TTL,
-                        source="google_news_rss" if not self.naver_id else "naver_api",
-                    )
-                    out[topic] = items[:per_topic]
+                future_topic = {ex.submit(do_fetch, t): t for t in to_fetch}
+                try:
+                    for fut in concurrent.futures.as_completed(future_topic, timeout=120):
+                        try:
+                            topic, items = fut.result(timeout=15)
+                        except Exception:
+                            topic = future_topic[fut]
+                            items = []
+                        if items:
+                            # 빈 결과는 캐시 안 함 (다음에 재시도 기회 줌)
+                            cache.set(
+                                f"news:topic:{topic}",
+                                [it.to_dict() for it in items],
+                                ttl_sec=self._CACHE_TTL,
+                                source="bing_rss",
+                            )
+                        out[topic] = items[:per_topic]
+                except concurrent.futures.TimeoutError:
+                    # 일부 토픽만 시간 안에 완료 — 그것만 반환
+                    pass
 
         return {t: out.get(t, []) for t in topics}
 
