@@ -3,7 +3,7 @@
 타겟 기업과 (1) 같은 섹터, (2) 매출액 비슷한 규모 (±50% ~ ±2배)
 인 기업들을 sample_financials.json 에서 골라 피어 평균 PER/PBR/PSR/EV-EBITDA 계산.
 
-KTDS 사례: IT서비스 섹터, 매출 6,668억 → 비슷한 IT기업들과 비교.
+예: IT서비스 섹터 + 매출 X억 기업 → 같은 섹터의 매출 ±50% 기업들과 비교.
 """
 
 from __future__ import annotations

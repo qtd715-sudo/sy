@@ -14,7 +14,7 @@ from .sy_method import SyInputs
 from .peers import select_peers, compute_peer_multiples, peer_summary
 
 
-# 섹터별 표준 WACC (KOSPI 평균 기반 추정. KTDS 사례 2.15% 처럼 자본구조 우호 기업은 별도 입력)
+# 섹터별 표준 WACC (KOSPI 평균 기반 추정. 자본구조 우호 기업은 별도 입력 가능)
 SECTOR_WACC = {
     "반도체": 0.085, "IT서비스": 0.090, "자동차": 0.095, "2차전지": 0.100,
     "바이오": 0.110, "은행": 0.075, "통신": 0.070, "유통": 0.085,
@@ -56,7 +56,7 @@ def build_inputs_from_raw(
         total_liab = max(total_assets - total_equity, 0)
 
     # 피어 멀티플 결정 우선순위:
-    # 1) raw 에 명시 (KTDS 사례처럼 사용자가 직접 지정)
+    # 1) raw 에 명시 (사용자가 직접 지정한 경우)
     # 2) universe 에서 자동 선정 (같은 섹터 + 매출 비슷)
     # 3) sector_multiples (섹터 표준값)
     auto_peers: list[dict[str, Any]] = []

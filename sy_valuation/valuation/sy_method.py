@@ -1,4 +1,4 @@
-"""SY 평가법 — KTDS 24.07 기업가치 평가 시트 방식 재현.
+"""SY 평가법 — 3접근법 기업가치 평가.
 
 세 가지 접근법으로 기업가치 범위(최소/중간/최대)를 산출:
 
@@ -29,7 +29,7 @@ import statistics
 
 @dataclass
 class SyInputs:
-    """KTDS 사례 입력값 일반화."""
+    """SY 평가법 입력값."""
     ticker: str
     name: str
     sector: str
@@ -53,11 +53,11 @@ class SyInputs:
     net_debt: float = 0.0
 
     # 성장/할인
-    growth_rate_short: float = 0.025  # 5년 (KTDS 사례 2~3%)
+    growth_rate_short: float = 0.025  # 5년 단기 성장률
     growth_rate_long: float = 0.025   # 6~10년
     terminal_growth: float = 0.005    # 영구성장
     wacc: float = 0.0875              # 가중평균자본비용
-    forecast_years: int = 10           # KTDS 사례 10년 (2024~2033)
+    forecast_years: int = 10           # 명시 예측기간 10년
 
     # 피어 (상대가치)
     peer_per_avg: float = 0.0
@@ -118,7 +118,7 @@ class SyValuationResult:
 # -------- 1) 수익가치접근법 --------
 
 def dcf_fcff(inp: SyInputs) -> tuple[float, list[dict[str, float]]]:
-    """FCFF 10년 명시기간 + 영구가치. KTDS 시트와 동일한 흐름.
+    """FCFF 10년 명시기간 + 영구가치.
     리턴: (기업가치, 연도별 표)
     """
     if inp.fcf <= 0 or inp.wacc <= inp.terminal_growth:

@@ -117,7 +117,6 @@
     {"ticker":"007310","name":"오뚜기","exchange":"KOSPI","sector":"유통","asset":"stock"},
     {"ticker":"004370","name":"농심","exchange":"KOSPI","sector":"유통","asset":"stock"},
     {"ticker":"271560","name":"오리온","exchange":"KOSPI","sector":"유통","asset":"stock"},
-    {"ticker":"052330","name":"KTDS (케이티디에스)","exchange":"KOSDAQ","sector":"IT서비스","asset":"stock"},
 
     {"ticker":"AAPL","name":"Apple","exchange":"NASDAQ","sector":"기술","asset":"stock"},
     {"ticker":"MSFT","name":"Microsoft","exchange":"NASDAQ","sector":"기술","asset":"stock"},

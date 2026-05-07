@@ -501,30 +501,6 @@
       "net_income": 428000000000, "ebitda": 380000000000,
       "fcf": 200000000000, "net_debt": 200000000000,
       "growth_rate": 0.04
-    },
-    {
-      "ticker": "052330", "name": "KTDS", "sector": "IT서비스",
-      "_note": "KTDS 24.07 기업가치평가 시트 기준 (2023.12.31 결산)",
-      "current_price": 5000, "shares_outstanding": 2635797,
-      "eps": 10042, "bps": 43375, "sps": 252967, "dps": 0, "roe": 0.231,
-      "revenue": 666874294649, "operating_income": 40585933422,
-      "net_income": 26466913218, "ebitda": 48348386362,
-      "fcf": 49642073422, "net_debt": 47659000000,
-      "growth_rate": 0.025,
-      "market_cap": 13178985000,
-      "total_assets": 303328546000,
-      "total_liabilities": 188970519000,
-      "total_equity": 114358027000,
-      "wacc": 0.0215,
-      "peer_per_avg": 10.86,
-      "peer_pbr_avg": 1.09,
-      "peer_psr_avg": 0.50,
-      "peer_ev_ebitda_avg": 7.25,
-      "peers": [
-        {"name": "쌍용정보통신", "per": 10.69, "pbr": 0.92, "beta_52w": 0.36},
-        {"name": "신세계I&C",  "per": 6.84,  "pbr": 0.42, "beta_52w": 0.54},
-        {"name": "더존비즈온", "per": 25.92, "pbr": 1.94, "beta_52w": -0.6}
-      ]
     }
   ]
 }

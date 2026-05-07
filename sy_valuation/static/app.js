@@ -543,7 +543,7 @@ function bigKrwAuto(n) {
 async function renderSyScreener(root) {
   root.innerHTML = `
     <h1 class="page-title">⭐ SY 평가법 저평가 종목 <span class="muted" style="font-size:13px">(기업가치 vs 시총)</span></h1>
-    <p class="page-sub">KTDS 24.07 시트 방식 — <strong>수익가치 + 자산가치 + 상대가치</strong> 3접근법으로 <strong>기업가치 범위(min/mid/max)</strong> 산출 후 시가총액과 비교. 자동 피어 그룹(같은 섹터+매출 비슷한 기업)으로 멀티플 계산.</p>
+    <p class="page-sub"><strong>수익가치 + 자산가치 + 상대가치</strong> 3접근법으로 <strong>기업가치 범위(min/mid/max)</strong> 산출 후 시가총액과 비교. 자동 피어 그룹(같은 섹터+매출 비슷한 기업)으로 멀티플 계산.</p>
     <div class="card" style="background:rgba(124,92,255,0.08);border-color:rgba(124,92,255,0.3)">
       <h3>저평가 Top10 과 무엇이 다른가?</h3>
       <table>
@@ -609,10 +609,10 @@ async function renderSyDetail(root, params) {
   const q = params.q || "";
   root.innerHTML = `
     <h1 class="page-title">📋 SY 평가법 상세 분석</h1>
-    <p class="page-sub">한 기업을 수익·자산·상대 3접근법으로 종합 평가. KTDS 사례 기준 모델.</p>
+    <p class="page-sub">한 기업을 수익·자산·상대 3접근법으로 종합 평가.</p>
     <div class="card">
       <form id="syForm" style="display:flex;gap:8px;position:relative">
-        <input id="syInp" type="text" value="${escapeHtml(q)}" placeholder="삼성전자, KTDS, 005930 …" autocomplete="off"
+        <input id="syInp" type="text" value="${escapeHtml(q)}" placeholder="삼성전자, 엠로, 005930 …" autocomplete="off"
           style="flex:1;padding:10px 12px;background:var(--bg-elev-2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px">
         <button type="submit" style="padding:10px 20px;background:var(--accent);color:#00322e;border:none;border-radius:6px;cursor:pointer;font-weight:600">분석</button>
       </form>

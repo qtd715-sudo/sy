@@ -119,7 +119,16 @@ class App:
         }
 
     def undervalued(self, n: int = 10, strict: bool = True) -> list[dict[str, Any]]:
-        results = find_undervalued(self.repo.all_financials(), top_n=n, strict=strict)
+        # 샘플 종목 모두 실시간 가격으로 갱신 후 평가
+        financials = self.repo.all_financials()
+        for f in financials:
+            try:
+                q = self.price.quote(f.ticker)
+                if q and q.price > 0:
+                    f.current_price = q.price
+            except Exception:
+                pass
+        results = find_undervalued(financials, top_n=n, strict=strict)
         return [r.to_dict() for r in results]
 
     def sy_evaluate(self, query: str) -> dict[str, Any]:
@@ -185,16 +194,29 @@ class App:
         out: list[dict[str, Any]] = []
         sectors = self.repo.sector_table()
         universe = self.repo.all()
+        # 모든 종목 실시간 가격으로 갱신 (시총 정확도)
+        live_universe = []
         for raw in universe:
+            raw = dict(raw)
+            try:
+                q = self.price.quote(raw["ticker"])
+                if q and q.price > 0:
+                    raw["current_price"] = q.price
+                    if raw.get("shares_outstanding"):
+                        raw["market_cap"] = q.price * raw["shares_outstanding"]
+            except Exception:
+                pass
+            live_universe.append(raw)
+
+        for raw in live_universe:
             sector_mults = sectors.get(raw["sector"], {})
-            inp = build_inputs_from_raw(raw, sector_mults, universe=universe)
+            inp = build_inputs_from_raw(raw, sector_mults, universe=live_universe)
             r = evaluate_sy(inp)
             if r.market_cap <= 0 or r.enterprise_mid <= 0:
                 continue
             if r.upside_mid <= 0:
                 continue
             out.append(r.to_dict())
-        # SY 평가법은 enterprise/시총 비율로 정렬 (Top 10 의 per-share upside 와 다른 metric)
         out.sort(key=lambda x: x["upside_mid"], reverse=True)
         return out[:n]
 
