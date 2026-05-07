@@ -131,7 +131,6 @@ class App:
             }
         sectors = self.repo.sector_table()
         sector_mults = sectors.get(raw["sector"], {})
-        # 실시간 가격 (있으면) 으로 시총 갱신
         try:
             q = self.price.quote(raw["ticker"])
             if q and q.price > 0 and raw.get("shares_outstanding"):
@@ -141,22 +140,26 @@ class App:
                     raw["market_cap"] = q.price * raw["shares_outstanding"]
         except Exception:
             pass
-        inp = build_inputs_from_raw(raw, sector_mults)
+        # 자동 피어 선정용 universe = 샘플 전체
+        universe = self.repo.all()
+        inp = build_inputs_from_raw(raw, sector_mults, universe=universe)
         result = evaluate_sy(inp)
         return result.to_dict()
 
     def sy_undervalued(self, n: int = 10) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         sectors = self.repo.sector_table()
-        for raw in self.repo.all():
+        universe = self.repo.all()
+        for raw in universe:
             sector_mults = sectors.get(raw["sector"], {})
-            inp = build_inputs_from_raw(raw, sector_mults)
+            inp = build_inputs_from_raw(raw, sector_mults, universe=universe)
             r = evaluate_sy(inp)
             if r.market_cap <= 0 or r.enterprise_mid <= 0:
                 continue
             if r.upside_mid <= 0:
                 continue
             out.append(r.to_dict())
+        # SY 평가법은 enterprise/시총 비율로 정렬 (Top 10 의 per-share upside 와 다른 metric)
         out.sort(key=lambda x: x["upside_mid"], reverse=True)
         return out[:n]
 

@@ -2,12 +2,16 @@
 
 샘플 financials 의 보강 필드(자산/부채/시총/피어 평균)가 있으면 그대로 사용,
 없으면 합리적 추정으로 채움.
+
+피어 평균이 raw 에 없으면 universe(전체 sample) 에서 자동 선정 — 같은 섹터 +
+매출 0.3x~3x 범위 기업들로 평균 PER/PBR/PSR/EV-EBITDA 계산.
 """
 
 from __future__ import annotations
 from typing import Any
 
 from .sy_method import SyInputs
+from .peers import select_peers, compute_peer_multiples, peer_summary
 
 
 # 섹터별 표준 WACC (KOSPI 평균 기반 추정. KTDS 사례 2.15% 처럼 자본구조 우호 기업은 별도 입력)
@@ -19,8 +23,15 @@ SECTOR_WACC = {
 }
 
 
-def build_inputs_from_raw(raw: dict[str, Any], sector_multiples: dict[str, float]) -> SyInputs:
-    """sample_financials 의 raw dict (회사 1건) → SyInputs."""
+def build_inputs_from_raw(
+    raw: dict[str, Any],
+    sector_multiples: dict[str, float],
+    universe: list[dict[str, Any]] | None = None,
+) -> SyInputs:
+    """sample_financials 의 raw dict (회사 1건) → SyInputs.
+
+    universe 가 주어지면 자동 피어 선정 (같은 섹터 + 비슷한 매출 규모).
+    """
     name = raw["name"]
     sector = raw["sector"]
     price = float(raw.get("current_price", 0))
@@ -44,11 +55,30 @@ def build_inputs_from_raw(raw: dict[str, Any], sector_multiples: dict[str, float
     if total_liab <= 0 and total_assets > 0 and total_equity > 0:
         total_liab = max(total_assets - total_equity, 0)
 
-    # 피어 멀티플: raw에 없으면 sector_multiples 사용
-    peer_per = float(raw.get("peer_per_avg") or sector_multiples.get("per", 12.0))
-    peer_pbr = float(raw.get("peer_pbr_avg") or sector_multiples.get("pbr", 1.0))
-    peer_psr = float(raw.get("peer_psr_avg") or sector_multiples.get("psr", 1.0))
-    peer_ev = float(raw.get("peer_ev_ebitda_avg") or sector_multiples.get("ev_ebitda", 8.0))
+    # 피어 멀티플 결정 우선순위:
+    # 1) raw 에 명시 (KTDS 사례처럼 사용자가 직접 지정)
+    # 2) universe 에서 자동 선정 (같은 섹터 + 매출 비슷)
+    # 3) sector_multiples (섹터 표준값)
+    auto_peers: list[dict[str, Any]] = []
+    auto_mults: dict[str, float] = {}
+    if universe and not raw.get("peers"):
+        auto_peers = select_peers(raw, universe)
+        auto_mults = compute_peer_multiples(auto_peers)
+
+    def _pick(key_user: str, key_auto: str, default_key: str, default_value: float) -> float:
+        if raw.get(key_user):
+            return float(raw[key_user])
+        if auto_mults.get(key_auto):
+            return float(auto_mults[key_auto])
+        return float(sector_multiples.get(default_key, default_value))
+
+    peer_per = _pick("peer_per_avg",       "per",       "per",       12.0)
+    peer_pbr = _pick("peer_pbr_avg",       "pbr",       "pbr",        1.0)
+    peer_psr = _pick("peer_psr_avg",       "psr",       "psr",        1.0)
+    peer_ev  = _pick("peer_ev_ebitda_avg", "ev_ebitda", "ev_ebitda",  8.0)
+
+    # 피어 정보 (UI 표시용)
+    peers_info = raw.get("peers") or peer_summary(auto_peers)
 
     wacc = float(raw.get("wacc") or SECTOR_WACC.get(sector, 0.0875))
     growth_short = float(raw.get("growth_rate") or 0.025)
@@ -80,5 +110,5 @@ def build_inputs_from_raw(raw: dict[str, Any], sector_multiples: dict[str, float
         peer_pbr_avg=peer_pbr,
         peer_psr_avg=peer_psr,
         peer_ev_ebitda_avg=peer_ev,
-        peers=raw.get("peers", []),
+        peers=peers_info,
     )

@@ -102,12 +102,25 @@ class Scheduler:
         log.info("prefetched hot tickers: %d/%d", ok, len(HOT_TICKERS))
         return ok
 
+    def _job_krx_universe(self) -> int:
+        try:
+            from .data_sources.krx_universe import load_universe
+            items = load_universe(force_refresh=True)
+            # repository 에도 즉시 반영
+            self.app.repo.load()
+            log.info("refreshed KRX universe: %d tickers", len(items))
+            return len(items)
+        except Exception as e:
+            log.warning("KRX universe refresh failed: %s", e)
+            return 0
+
     # -------- loop --------
 
     SCHEDULE = [
-        ("news",    3600, "_job_news"),         # 1시간
-        ("market",  300,  "_job_market"),       # 5분
-        ("hot",     1800, "_job_hot_tickers"),  # 30분
+        ("news",     3600,   "_job_news"),         # 1시간
+        ("market",   300,    "_job_market"),       # 5분
+        ("hot",      1800,   "_job_hot_tickers"),  # 30분
+        ("krx_univ", 86400,  "_job_krx_universe"), # 24시간 — 코스피/코스닥 전종목
     ]
 
     def _loop(self) -> None:

@@ -46,10 +46,10 @@ class FinancialsRepository:
         self._by_ticker = {c["ticker"]: c for c in self._companies}
         self._by_name = {c["name"]: c for c in self._companies}
 
+        seen: set[tuple[str, str]] = set()
         if self.tickers_path.exists():
             with open(self.tickers_path, "r", encoding="utf-8") as f:
                 tdata = json.load(f)
-            seen = set()
             for t in tdata.get("tickers", []):
                 key = (t["ticker"], t["name"])
                 if key in seen:
@@ -58,6 +58,20 @@ class FinancialsRepository:
                 self._tickers.append(t)
                 self._lite_by_ticker[t["ticker"]] = t
                 self._lite_by_name[t["name"]] = t
+
+        # KRX 전 종목 자동 로드 (네이버 캐시) — 있으면 추가
+        try:
+            from .krx_universe import load_universe
+            for t in load_universe():
+                key = (t["ticker"], t["name"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                self._tickers.append(t)
+                self._lite_by_ticker[t["ticker"]] = t
+                self._lite_by_name[t["name"]] = t
+        except Exception:
+            pass
 
     @staticmethod
     def _norm(s: str) -> str:

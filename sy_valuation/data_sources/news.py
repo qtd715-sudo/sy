@@ -47,13 +47,45 @@ class NewsConnector:
         self.naver_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
 
     def search(self, query: str, limit: int = 10) -> list[NewsItem]:
-        """Naver API → 실패 시 Google News RSS."""
+        """Naver API (키있으면) → Naver 검색 스크레이핑 → Google News RSS 순서."""
         items: list[NewsItem] = []
         if self.naver_id and self.naver_secret:
             items = self._search_naver(query, limit)
         if not items:
+            items = self._search_naver_scrape(query, limit)
+        if not items:
             items = self._search_google(query, limit)
         return items[:limit]
+
+    def _search_naver_scrape(self, query: str, limit: int) -> list[NewsItem]:
+        """Naver 검색 결과 페이지 HTML 스크레이핑 (키 불필요)."""
+        url = f"https://search.naver.com/search.naver?where=news&query={urllib.parse.quote(query)}&sort=1"
+        data = fetch(url, timeout=self.timeout)
+        if not data:
+            return []
+        try:
+            html = data.decode("utf-8", errors="replace")
+        except Exception:
+            return []
+        # Naver 뉴스 결과 파싱: <a class="news_tit" href="..." title="..."> 또는 비슷한 구조
+        items: list[NewsItem] = []
+        # 제목 + 링크 추출 (클래스명 변경에 강건한 정규식)
+        pattern = re.compile(
+            r'<a[^>]+class="[^"]*news_tit[^"]*"[^>]+href="([^"]+)"[^>]*title="([^"]+)"',
+            re.IGNORECASE,
+        )
+        for m in pattern.finditer(html):
+            link, title = m.group(1), m.group(2)
+            items.append(NewsItem(
+                title=_strip_html(title),
+                link=link,
+                description="",
+                published="",
+                source="Naver",
+            ))
+            if len(items) >= limit:
+                break
+        return items
 
     def _search_naver(self, query: str, limit: int) -> list[NewsItem]:
         url = f"{self.NAVER_API}?query={urllib.parse.quote(query)}&display={limit}&sort=date"

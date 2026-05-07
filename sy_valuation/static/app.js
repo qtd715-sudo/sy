@@ -92,6 +92,12 @@ function initHeader() {
 
 function setActiveNav(route) {
   $$(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.route === route));
+  // 모바일 nav 도 동기화 (이미 위에서 다 처리됨)
+  // 활성 항목을 좌측으로 자동 스크롤
+  const active = $(".topnav .nav-item.active");
+  if (active && active.scrollIntoView) {
+    try { active.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch {}
+  }
 }
 
 async function render() {
@@ -245,8 +251,8 @@ function renderNewsList(items) {
 // ---------- UNDERVALUED ----------
 async function renderUndervalued(root) {
   root.innerHTML = `
-    <h1 class="page-title">저평가 Top 10</h1>
-    <p class="page-sub">가치평가 모델이 산출한 적정주가 대비 디스카운트가 크고, 정량 필터를 통과한 종목.</p>
+    <h1 class="page-title">저평가 Top 10 <span class="muted" style="font-size:13px">(주당 적정주가 기준)</span></h1>
+    <p class="page-sub">DCF·RIM·PER·PBR·PSR·EV/EBITDA·Graham·Lynch <strong>9개 모델 가중평균</strong>으로 산출한 <strong>주당 적정주가</strong> 대비 현재가 디스카운트. 정량 필터(ROE≥5%, 흑자, 부채) 통과 종목.</p>
     <div class="card">
       <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
         <span class="muted">정확평가가 가능한 한국 블루칩 표본 기반. DART 연동 시 실제 재무로 자동 교체됨.</span>
@@ -536,10 +542,17 @@ function bigKrwAuto(n) {
 
 async function renderSyScreener(root) {
   root.innerHTML = `
-    <h1 class="page-title">⭐ SY 평가법 저평가 종목</h1>
-    <p class="page-sub">KTDS 24.07 기업가치 평가 시트 방식 — 수익가치 + 자산가치 + 상대가치 3접근법으로 산출한 기업가치 범위 vs 시총.</p>
+    <h1 class="page-title">⭐ SY 평가법 저평가 종목 <span class="muted" style="font-size:13px">(기업가치 vs 시총)</span></h1>
+    <p class="page-sub">KTDS 24.07 시트 방식 — <strong>수익가치 + 자산가치 + 상대가치</strong> 3접근법으로 <strong>기업가치 범위(min/mid/max)</strong> 산출 후 시가총액과 비교. 자동 피어 그룹(같은 섹터+매출 비슷한 기업)으로 멀티플 계산.</p>
+    <div class="card" style="background:rgba(124,92,255,0.08);border-color:rgba(124,92,255,0.3)">
+      <h3>저평가 Top10 과 무엇이 다른가?</h3>
+      <table>
+        <tr class="no-hover"><td><strong>Top 10</strong></td><td>주당 적정주가 (9 모델 가중평균) vs 현재가</td></tr>
+        <tr class="no-hover"><td><strong>SY 평가법</strong></td><td>총 기업가치 범위 (3 접근법) vs 시가총액 — 자산가치 비중↑, 멀티플 비중↑</td></tr>
+      </table>
+    </div>
     <div class="card">
-      <div class="muted" style="margin-bottom:8px">상승여력 = (종합 기업가치 중간값 − 시총) / 시총. 정렬 기준은 mid upside 내림차순.</div>
+      <div class="muted" style="margin-bottom:8px">상승여력 = (종합 기업가치 중간값 − 시총) / 시총.</div>
       <div id="sytable" class="loading">불러오는 중…</div>
     </div>
     <div class="card">
