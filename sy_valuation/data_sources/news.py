@@ -128,8 +128,9 @@ class NewsConnector:
         return self.search("코스피 OR 미국증시 OR 환율 OR 금리", limit=limit)
 
     # Bing News 는 OR 미지원 → 단일 키워드 사용 (가장 대표적인 1개)
-    TOPICS = {
-        # 시장
+    # 시장 종합은 대시보드 페이지에 표시, 여기 TOPICS 는 토픽 뉴스 페이지용 (산업/테마/정책)
+
+    MARKET_TOPICS = {
         "코스피":           "코스피",
         "코스닥":           "코스닥",
         "미국증시":         "미국증시",
@@ -137,11 +138,23 @@ class NewsConnector:
         "일본증시":         "닛케이",
         "중국증시":         "상하이종합",
         "환율":             "원달러 환율",
-        "금리/채권":        "기준금리",
+        "금리":             "기준금리",
+        "채권":             "국고채",
         "원유/에너지":      "유가",
         "금속/원자재":      "금값",
         "농산물":           "곡물 가격",
-        # 산업/테마
+    }
+
+    TOPICS = {
+        # ── 정책/금융/부동산 (상위) ──
+        "금융":             "금융 은행 보험",
+        "부동산":           "부동산",
+        "정부정책":         "정부정책",
+        "경제정책":         "경제정책",
+        "청년정책":         "청년정책",
+        "주택정책":         "주택정책",
+        "청약":             "주택 청약",
+        # ── 산업/테마 (반도체부터 이어서) ──
         "반도체":           "반도체",
         "2차전지":          "2차전지",
         "AI":               "인공지능",
@@ -149,23 +162,63 @@ class NewsConnector:
         "자동차":           "전기차",
         "조선/방산":        "K-방산",
         "엔터/콘텐츠":      "K팝",
-        "부동산":           "부동산",
-        "가상자산":         "비트코인",
         "ETF":              "ETF",
-        # 정책/사회
-        "정부정책":         "정부정책",
-        "경제정책":         "경제정책",
-        "청년정책":         "청년정책",
+        "글로벌":           "글로벌 경제",
+        "IT":               "IT 소프트웨어",
+        # ── 하위 ──
+        "가상자산":         "비트코인",
         "서울청년정책":     "서울 청년수당",
-        "주택정책":         "주택정책",
         "세제":             "세제개편",
         "노동/일자리":      "일자리",
         "복지":             "복지정책",
     }
 
+    @classmethod
+    def all_query_topics(cls) -> dict[str, str]:
+        """대시보드용 + 토픽뉴스용 합쳐서 반환 (캐시/prefetch 용도)."""
+        merged = dict(cls.MARKET_TOPICS)
+        merged.update(cls.TOPICS)
+        return merged
+
     def topic_news(self, topic: str, limit: int = 8) -> list[NewsItem]:
-        q = self.TOPICS.get(topic, topic)
+        q = self.TOPICS.get(topic) or self.MARKET_TOPICS.get(topic) or topic
         return self.search(q, limit=limit)
+
+    def all_market_topics(self, per_topic: int = 4) -> dict[str, list[NewsItem]]:
+        """대시보드용 — 시장 종합 토픽 (캐시 공유)."""
+        import concurrent.futures
+        cache = get_cache()
+        topics = list(self.MARKET_TOPICS.keys())
+        out: dict[str, list[NewsItem]] = {}
+        to_fetch: list[str] = []
+        for t in topics:
+            cached = cache.get(f"news:topic:{t}")
+            if cached:
+                items_raw, _meta = cached
+                out[t] = [NewsItem(**it) for it in items_raw[:per_topic]]
+            else:
+                to_fetch.append(t)
+        if to_fetch:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+                future_topic = {ex.submit(lambda x=t: (x, self.topic_news(x, limit=10)), ): t for t in to_fetch}
+                try:
+                    for fut in concurrent.futures.as_completed(future_topic, timeout=60):
+                        try:
+                            topic, items = fut.result(timeout=15)
+                        except Exception:
+                            topic = future_topic[fut]
+                            items = []
+                        if items:
+                            cache.set(
+                                f"news:topic:{topic}",
+                                [it.to_dict() for it in items],
+                                ttl_sec=self._CACHE_TTL,
+                                source="bing_rss",
+                            )
+                        out[topic] = items[:per_topic]
+                except concurrent.futures.TimeoutError:
+                    pass
+        return {t: out.get(t, []) for t in topics}
 
     _CACHE_TTL = 3600  # 1시간 (SQLite 영속 캐시)
 

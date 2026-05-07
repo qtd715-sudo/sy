@@ -64,7 +64,8 @@ class Scheduler:
     def _job_news(self) -> int:
         try:
             self.app.news.all_topics(per_topic=10, force_refresh=True)
-            log.info("prefetched news topics")
+            self.app.news.all_market_topics(per_topic=10)
+            log.info("prefetched news topics + market topics")
             return 1
         except Exception as e:
             log.warning("news prefetch failed: %s", e)

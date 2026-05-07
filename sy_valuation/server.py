@@ -190,6 +190,9 @@ class App:
             ]
         return out
 
+    # SY 평가법 스크리너에서 제외할 종목 (지주사·통신사 등 자산가치/수익가치가 왜곡되는 케이스)
+    SY_EXCLUDE_TICKERS = {"030200"}  # KT (자산-부채 비율 등으로 노이즈 큼)
+
     def sy_undervalued(self, n: int = 10) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         sectors = self.repo.sector_table()
@@ -209,6 +212,8 @@ class App:
             live_universe.append(raw)
 
         for raw in live_universe:
+            if raw["ticker"] in self.SY_EXCLUDE_TICKERS:
+                continue
             sector_mults = sectors.get(raw["sector"], {})
             inp = build_inputs_from_raw(raw, sector_mults, universe=live_universe)
             r = evaluate_sy(inp)
@@ -272,6 +277,10 @@ class App:
 
     def news_topics(self, per_topic: int = 4) -> dict[str, Any]:
         groups = self.news.all_topics(per_topic=per_topic)
+        return {topic: [it.to_dict() for it in items] for topic, items in groups.items()}
+
+    def market_topics(self, per_topic: int = 4) -> dict[str, Any]:
+        groups = self.news.all_market_topics(per_topic=per_topic)
         return {topic: [it.to_dict() for it in items] for topic, items in groups.items()}
 
     def news_topic(self, topic: str, n: int = 10) -> dict[str, Any]:
@@ -399,6 +408,8 @@ class Handler(BaseHTTPRequestHandler):
                         ).items()
                     })
                 return self._send_json(app.news_topics(per_topic=int(params.get("n", 4))))
+            if path == "/api/news/market":
+                return self._send_json(app.market_topics(per_topic=int(params.get("n", 4))))
             if path == "/api/news/topic":
                 return self._send_json(app.news_topic(params.get("topic", "코스피"), n=int(params.get("n", 10))))
             if path == "/api/commodities":

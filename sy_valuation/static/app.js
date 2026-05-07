@@ -185,7 +185,7 @@ function attachAutocomplete(input, onSelect) {
 async function renderDashboard(root) {
   root.innerHTML = `
     <h1 class="page-title">대시보드</h1>
-    <p class="page-sub">주요 지수, 환율, 채권금리, 원자재, 가상자산 + 토픽별 시장뉴스 + 저평가 Top5.</p>
+    <p class="page-sub">주요 지수·환율·채권금리·원자재 + 시장 종합 뉴스 + 저평가 Top5.</p>
 
     <div id="commodGroups" class="loading">시세 불러오는 중…</div>
 
@@ -194,10 +194,9 @@ async function renderDashboard(root) {
       <div id="under5" class="loading">불러오는 중…</div>
     </div>
 
-    <div class="card">
-      <h3>시장 뉴스 (전체) <span id="senti" class="muted"></span></h3>
-      <div id="news" class="loading">불러오는 중…</div>
-    </div>
+    <h2 class="page-title" style="margin-top:24px">📊 시장 종합 뉴스</h2>
+    <p class="page-sub">코스피 · 코스닥 · 미국/유럽/일본/중국 증시 · 환율 · 금리 · 채권 · 원유 · 원자재 · 농산물</p>
+    <div id="marketNews" class="loading">불러오는 중…</div>
   `;
 
   api("/api/commodities").then(groups => {
@@ -218,12 +217,16 @@ async function renderDashboard(root) {
     bindRowClicks($("#under5"));
   }).catch(e => $("#under5").innerHTML = `<div class="error">${e.message}</div>`);
 
-  api("/api/market-news?n=8").then(d => {
-    const s = d.sentiment;
-    const cls = s.score > 0.1 ? "pos" : (s.score < -0.1 ? "neg" : "muted");
-    $("#senti").innerHTML = `· 감성지수 <span class="${cls}">${(s.score*100).toFixed(0)}</span> (긍정 ${s.positive} / 부정 ${s.negative})`;
-    $("#news").innerHTML = renderNewsList(d.items);
-  }).catch(e => $("#news").innerHTML = `<div class="error">${e.message}</div>`);
+  // 시장 종합 뉴스 (12개 토픽 — 코스피, 코스닥, 미국/유럽/일본/중국 증시, 환율, 금리, 채권, 원유, 원자재, 농산물)
+  api("/api/news/market?n=4").then(data => {
+    const html = Object.entries(data).map(([topic, items]) => `
+      <div class="card">
+        <h3>${escapeHtml(topic)} <span class="muted" style="font-weight:400">(${items.length})</span></h3>
+        ${items.length ? renderNewsList(items) : `<div class="muted">데이터 없음</div>`}
+      </div>
+    `).join("");
+    $("#marketNews").innerHTML = html || `<div class="card error">시장 뉴스 로드 실패</div>`;
+  }).catch(e => $("#marketNews").innerHTML = `<div class="card error">${e.message}</div>`);
 }
 
 function renderQuoteTable(list) {
@@ -775,8 +778,8 @@ function renderSyDetailContent(d) {
 // ---------- NEWS (topical) ----------
 async function renderNews(root) {
   root.innerHTML = `
-    <h1 class="page-title">시장 뉴스 (토픽별)</h1>
-    <p class="page-sub">코스피·코스닥·미국증시·환율·금리·원유·반도체·2차전지·AI·부동산·가상자산·ETF.</p>
+    <h1 class="page-title">📰 토픽 뉴스</h1>
+    <p class="page-sub">금융 · 부동산 · 정부정책 · 경제정책 · 청년정책 · 청약 / 반도체 · 2차전지 · AI · 바이오 · 자동차 · 조선/방산 · IT · 글로벌 / 가상자산 · 세제 · 노동 · 복지</p>
     <div id="topics" class="loading">불러오는 중…</div>
   `;
   try {
