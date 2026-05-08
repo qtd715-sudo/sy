@@ -91,6 +91,15 @@ class YoutubeChannel:
                 name, cid = pair.split(":", 1)
                 self.channels[name.strip()] = cid.strip()
 
+    # Invidious public 인스턴스 (YouTube 오픈소스 프록시)
+    INVIDIOUS_INSTANCES = [
+        "https://invidious.fdn.fr",
+        "https://yewtu.be",
+        "https://invidious.protokolla.fi",
+        "https://inv.nadeko.net",
+        "https://invidious.privacydev.net",
+    ]
+
     def fetch_channel(self, channel_id: str, channel_name: str = "") -> list[VideoItem]:
         cache = get_cache()
         cache_key = f"youtube:{channel_id}"
@@ -100,14 +109,66 @@ class YoutubeChannel:
 
         # 1) RSS feed 시도
         out = self._fetch_rss(channel_id, channel_name)
-
-        # 2) RSS 실패 → 채널 페이지 HTML 스크레이핑
+        # 2) Invidious API 시도 (RSS 가 404 나 0 일 때)
+        if not out:
+            out = self._fetch_invidious(channel_id, channel_name)
+        # 3) 채널 페이지 HTML 스크레이핑 (마지막 폴백)
         if not out:
             out = self._fetch_channel_page(channel_id, channel_name)
 
         if out:
             cache.set(cache_key, [v.to_dict() for v in out], ttl_sec=self.CACHE_TTL, source="youtube_rss")
         return out
+
+    def _fetch_invidious(self, channel_id: str, channel_name: str) -> list[VideoItem]:
+        """Invidious public 인스턴스의 채널 영상 API.
+        엔드포인트: /api/v1/channels/{id}/videos → [{videoId, title, published, ...}]
+        여러 인스턴스 순회 (다운된 인스턴스 대응)."""
+        from .http_util import fetch_json
+        for base in self.INVIDIOUS_INSTANCES:
+            url = f"{base}/api/v1/channels/{channel_id}/videos"
+            data = fetch_json(url, timeout=8)
+            if not data or not isinstance(data, list) or not data:
+                # videos 가 dict 일 수도 있음 (페이지네이션)
+                if isinstance(data, dict) and "videos" in data:
+                    items = data["videos"]
+                else:
+                    continue
+            else:
+                items = data
+
+            out: list[VideoItem] = []
+            for it in items[:30]:
+                vid = it.get("videoId", "")
+                if not vid:
+                    continue
+                title = (it.get("title") or "").strip()
+                if not title or len(title) < 3:
+                    continue
+                # published 는 unix timestamp
+                pub_ts = it.get("published", 0)
+                if pub_ts:
+                    try:
+                        from datetime import datetime, timezone
+                        published = datetime.fromtimestamp(pub_ts, tz=timezone.utc).isoformat()
+                    except Exception:
+                        published = ""
+                else:
+                    published = it.get("publishedText", "")
+                description = (it.get("description") or "").strip()
+                # thumbnail
+                thumbs = it.get("videoThumbnails") or []
+                thumbnail = thumbs[0]["url"] if thumbs else f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+                out.append(VideoItem(
+                    video_id=vid, title=title,
+                    link=f"https://www.youtube.com/watch?v={vid}",
+                    published=published, updated=published,
+                    description=description, thumbnail=thumbnail,
+                    channel=channel_name or channel_id,
+                ))
+            if out:
+                return out
+        return []
 
     def _fetch_rss(self, channel_id: str, channel_name: str) -> list[VideoItem]:
         url = self.RSS.format(cid=channel_id)
