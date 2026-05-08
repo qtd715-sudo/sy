@@ -11,24 +11,33 @@ const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
 
 const fmt = {
   krw(n) {
-    if (n === null || n === undefined || isNaN(n)) return "-";
+    if (n === null || n === undefined || isNaN(n) || n === 0) return "-";
     return new Intl.NumberFormat("ko-KR").format(Math.round(n)) + "원";
   },
   num(n, d = 2) {
-    if (n === null || n === undefined || isNaN(n)) return "-";
+    if (n === null || n === undefined || isNaN(n) || n === 0) return "-";
     return Number(n).toLocaleString("ko-KR", { minimumFractionDigits: 0, maximumFractionDigits: d });
   },
   pct(n, d = 2) {
     if (n === null || n === undefined || isNaN(n)) return "-";
+    if (n === 0) return "0.00%";    // 0% 는 의미있는 값
     const v = (Number(n) * 100).toFixed(d);
     return (Number(n) >= 0 ? "+" : "") + v + "%";
   },
   bigKrw(n) {
-    if (!n) return "-";
+    if (n === null || n === undefined || isNaN(n) || n === 0) return "-";
     const abs = Math.abs(n);
     if (abs >= 1e12) return (n / 1e12).toFixed(2) + "조원";
     if (abs >= 1e8) return (n / 1e8).toFixed(0) + "억원";
     return new Intl.NumberFormat("ko-KR").format(Math.round(n)) + "원";
+  },
+  // 글로벌 통화 자동 (USD 등) — current_price + currency 받아서
+  price(n, currency) {
+    if (n === null || n === undefined || isNaN(n) || n === 0) return "-";
+    if (currency && currency !== "KRW") {
+      return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+    return fmt.krw(n);
   },
 };
 
@@ -390,9 +399,11 @@ function renderValuationDetail(data) {
     priceSubtext = `<span class="muted">정적 샘플가 (실시간 fetch 실패)</span>`;
   }
 
-  const modelEntries = Object.entries(v.by_model || {}).map(([k, val]) => ({
+  const allEntries = Object.entries(v.by_model || {}).map(([k, val]) => ({
     name: k, value: val, weight: (v.weights && v.weights[k]) || 0,
-  })).sort((a, b) => b.weight - a.weight);
+  }));
+  const modelEntries = allEntries.filter(m => m.value > 0).sort((a, b) => b.weight - a.weight);
+  const skippedCount = allEntries.length - modelEntries.length;
   const maxModelVal = Math.max(...modelEntries.map(m => m.value), 1);
 
   const priceFmt = f.exchange && !f.exchange.startsWith("KOS") ? (n) => "$" + fmt.num(n, 2) : fmt.krw;
@@ -408,30 +419,31 @@ function renderValuationDetail(data) {
     <div class="grid-2">
       <div class="card">
         <h3>모델별 적정주가 (weight 순)</h3>
-        ${modelEntries.map(m => `
+        ${modelEntries.length ? modelEntries.map(m => `
           <div class="bar-h">
             <div class="name">${modelLabel(m.name)}</div>
             <div class="bar"><div class="fill" style="width:${(m.value / maxModelVal * 100).toFixed(1)}%"></div></div>
             <div class="val">${priceFmt(m.value)}</div>
             <div class="muted" style="width:50px;text-align:right">${(m.weight*100).toFixed(0)}%</div>
           </div>
-        `).join("")}
+        `).join("") : `<div class="muted">데이터 부족 — 산출 가능한 모델 없음</div>`}
+        ${skippedCount > 0 ? `<div class="muted" style="margin-top:8px;font-size:11px">⚠ ${skippedCount}개 모델은 입력 데이터 부족으로 제외됨 (해외 종목 일부, 비샘플 종목)</div>` : ""}
         ${(v.notes || []).length ? `<div class="muted" style="margin-top:8px">${v.notes.join(" / ")}</div>` : ""}
       </div>
 
       <div class="card">
-        <h3>핵심 재무</h3>
+        <h3>핵심 재무 <span class="muted" style="font-size:11px;font-weight:400">("-" = 데이터 없음)</span></h3>
         <table>
           <tr class="no-hover"><td>EPS</td><td>${priceFmt(f.eps)}</td></tr>
           <tr class="no-hover"><td>BPS</td><td>${priceFmt(f.bps)}</td></tr>
-          <tr class="no-hover"><td>ROE</td><td>${fmt.pct(f.roe, 2)}</td></tr>
-          <tr class="no-hover"><td>EPS 성장률 추정</td><td>${fmt.pct(f.growth_rate, 2)}</td></tr>
-          <tr class="no-hover"><td>PER (현재)</td><td>${fmt.num(f.per_now)} <span class="muted">섹터 ${f.sector_per}</span></td></tr>
-          <tr class="no-hover"><td>PBR (현재)</td><td>${fmt.num(f.pbr_now)} <span class="muted">섹터 ${f.sector_pbr}</span></td></tr>
+          <tr class="no-hover"><td>ROE</td><td>${f.roe ? fmt.pct(f.roe, 2) : '-'}</td></tr>
+          <tr class="no-hover"><td>EPS 성장률 추정</td><td>${f.growth_rate ? fmt.pct(f.growth_rate, 2) : '-'}</td></tr>
+          <tr class="no-hover"><td>PER (현재)</td><td>${fmt.num(f.per_now)} <span class="muted">섹터 ${f.sector_per || '-'}</span></td></tr>
+          <tr class="no-hover"><td>PBR (현재)</td><td>${fmt.num(f.pbr_now)} <span class="muted">섹터 ${f.sector_pbr || '-'}</span></td></tr>
           <tr class="no-hover"><td>EBITDA</td><td>${fmt.bigKrw(f.ebitda)}</td></tr>
           <tr class="no-hover"><td>FCF</td><td>${fmt.bigKrw(f.fcf)}</td></tr>
-          <tr class="no-hover"><td>순부채</td><td>${fmt.bigKrw(f.net_debt)}</td></tr>
-          <tr class="no-hover"><td>발행주식수</td><td>${fmt.num(f.shares_outstanding, 0)}주</td></tr>
+          <tr class="no-hover"><td>순부채</td><td>${f.net_debt ? fmt.bigKrw(f.net_debt) : '-'}</td></tr>
+          <tr class="no-hover"><td>발행주식수</td><td>${f.shares_outstanding ? fmt.num(f.shares_outstanding, 0) + '주' : '-'}</td></tr>
         </table>
       </div>
     </div>

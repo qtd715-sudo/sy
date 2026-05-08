@@ -59,6 +59,16 @@ class LiveFinancials:
             return float(x)
         return 0.0
 
+    def _chart_meta(self, sym: str) -> dict[str, Any] | None:
+        """Yahoo v8 chart — quoteSummary 가 막혔을 때 폴백.
+        meta 에는 가격/시총/52주고저/통화 정도만 있음 (재무 X)."""
+        url = self.CHART.format(sym=sym)
+        d = fetch_json(url, timeout=self.timeout)
+        try:
+            return d["chart"]["result"][0].get("meta") if d else None
+        except (KeyError, IndexError, TypeError):
+            return None
+
     def build_financials(
         self,
         ticker: str,
@@ -66,7 +76,7 @@ class LiveFinancials:
         sector: str,
         sector_multiples: dict[str, float],
     ) -> Financials | None:
-        last_err = None
+        # 1) quoteSummary 시도 (전체 재무)
         for sym in self._to_yahoo(ticker):
             r = self._summary(sym)
             if r is None:
@@ -104,4 +114,28 @@ class LiveFinancials:
                 sector_psr=float(sector_multiples.get("psr", 1.0)),
                 sector_ev_ebitda=float(sector_multiples.get("ev_ebitda", 8.0)),
             )
+
+        # 2) chart meta 폴백 — 가격/시총만 (재무 항목은 0 → "-" 로 화면에 표시)
+        for sym in self._to_yahoo(ticker):
+            meta = self._chart_meta(sym)
+            if not meta:
+                continue
+            price = float(meta.get("regularMarketPrice") or meta.get("previousClose") or 0)
+            mcap = float(meta.get("marketCap") or 0)
+            if price <= 0:
+                continue
+            shares = mcap / price if mcap > 0 and price > 0 else 0
+            return Financials(
+                ticker=ticker, name=name, sector=sector,
+                current_price=price, shares_outstanding=shares,
+                eps=0, bps=0, sps=0, dps=0, roe=0,
+                revenue=0, operating_income=0, net_income=0,
+                ebitda=0, fcf=0, net_debt=0,
+                growth_rate=0.05,
+                sector_per=float(sector_multiples.get("per", 12.0)),
+                sector_pbr=float(sector_multiples.get("pbr", 1.0)),
+                sector_psr=float(sector_multiples.get("psr", 1.0)),
+                sector_ev_ebitda=float(sector_multiples.get("ev_ebitda", 8.0)),
+            )
+
         return None
