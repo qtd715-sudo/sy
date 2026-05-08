@@ -191,8 +191,34 @@ function attachAutocomplete(input, onSelect) {
   input.addEventListener("blur", () => setTimeout(close, 150));
 }
 
+function todayKST() {
+  // KST (UTC+9) 기준 오늘 날짜 — YYYY.MM.DD (요일)
+  const now = new Date();
+  const kstMs = now.getTime() + (9 * 60 - now.getTimezoneOffset()) * 60000;
+  const k = new Date(kstMs);
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  return `${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} (${days[k.getUTCDay()]})`;
+}
+function nowKST() {
+  const now = new Date();
+  const kstMs = now.getTime() + (9 * 60 - now.getTimezoneOffset()) * 60000;
+  const k = new Date(kstMs);
+  return `${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')} KST`;
+}
+function fmtDateKST(dateStr) {
+  // RSS pubDate (예: "Thu, 07 May 2026 16:37:21 GMT") → "05.08 01:37 KST"
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  const kstMs = d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000;
+  const k = new Date(kstMs);
+  return `${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')} KST`;
+}
+
 function metaStrip(...parts) {
-  return `<div class="meta-strip">${parts.map(p => `<span>${p}</span>`).join('<span class="dot">◆</span>')}</div>`;
+  // 오늘 날짜 자동 추가 (모든 페이지)
+  const dateLabel = `${todayKST()} · ${nowKST()}`;
+  return `<div class="meta-strip">${[dateLabel, ...parts].map(p => `<span>${p}</span>`).join('<span class="dot">◆</span>')}</div>`;
 }
 
 // ---------- DASHBOARD ----------
@@ -232,7 +258,8 @@ async function renderDashboard(root) {
     bindRowClicks($("#under5"));
   }).catch(e => $("#under5").innerHTML = `<div class="error">${e.message}</div>`);
 
-  // 시장 종합 뉴스 (12개 토픽 — 코스피, 코스닥, 미국/유럽/일본/중국 증시, 환율, 금리, 채권, 원유, 원자재, 농산물)
+  // 시장 종합 뉴스 (12개 토픽). 백그라운드 force refresh 한 번 — 화면은 캐시로 즉시 표시
+  fetch("/api/news/topics?force=1&n=4").catch(()=>{});  // fire-and-forget
   api("/api/news/market?n=4").then(data => {
     const html = Object.entries(data).map(([topic, items]) => `
       <div class="card">
@@ -262,7 +289,7 @@ function renderNewsList(items) {
   return `<ul class="news-list">${items.map(n => `
     <li>
       <div class="title"><a href="${n.link}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a></div>
-      <div class="meta">${escapeHtml(n.source || '')} · ${escapeHtml(n.published || '')}</div>
+      <div class="meta">${escapeHtml(n.source || '')} · ${escapeHtml(fmtDateKST(n.published))}</div>
     </li>`).join("")}</ul>`;
 }
 
