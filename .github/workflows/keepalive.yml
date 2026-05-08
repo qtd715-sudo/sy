@@ -1,16 +1,32 @@
-name: Keep-alive + Prefetch
+name: Keep-alive + Daily Refresh
 
 # Render 무료 티어는 15분 미사용 시 sleep.
-# 이 워크플로가 매 14분마다 ping → 절대 sleep 하지 않음.
-# 또한 매일 새벽 3시(KST) 에 강제 prefetch 실행 → 데이터 fresh 보장.
+# - 매 14분 ping 으로 sleep 방지
+# - 매일 06:00 KST: 대시보드 시세/원자재/지수 갱신
+# - 매일 09:00 KST: 뉴스 (시장 + 토픽) 갱신
+#
+# GitHub Actions cron 은 UTC 기준:
+#   KST 06:00 → UTC 21:00 (전날)
+#   KST 09:00 → UTC 00:00
 
 on:
   schedule:
-    - cron: "*/14 * * * *"   # 매 14분 (UTC, GitHub Actions cron)
-    - cron: "0 18 * * *"     # 매일 03:00 KST (UTC 18:00) — 일일 prefetch
-  workflow_dispatch:          # 수동 실행 버튼
+    - cron: "*/14 * * * *"   # 매 14분 — keep-alive
+    - cron: "0 21 * * *"     # 매일 KST 06:00 — 대시보드 (시세/원자재/지수)
+    - cron: "0 0 * * *"      # 매일 KST 09:00 — 뉴스
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '강제 실행 모드'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - market
+          - news
+          - ping
 
-# 동시 실행 1개로 제한 (cron 중복 방지)
 concurrency:
   group: keepalive
   cancel-in-progress: false
@@ -19,31 +35,37 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Show config
+      - name: Validate config
         run: |
           if [ -z "${{ vars.SY_URL }}" ]; then
             echo "::error::Repository variable SY_URL 이 설정되지 않았습니다."
-            echo "Settings → Secrets and variables → Actions → Variables 에서 SY_URL 추가하세요."
-            echo "예: https://sy-valuation.onrender.com"
             exit 1
           fi
           echo "URL: ${{ vars.SY_URL }}"
           echo "Schedule: ${{ github.event.schedule }}"
+          echo "Manual mode: ${{ github.event.inputs.mode }}"
 
-      - name: Health ping (keep-alive)
+      - name: Health ping (always)
         run: |
           set +e
           for i in 1 2 3; do
             code=$(curl -sS -o /tmp/health.json -m 30 -w "%{http_code}" "${{ vars.SY_URL }}/api/health")
             echo "attempt $i: HTTP $code"
             if [ "$code" = "200" ]; then
-              cat /tmp/health.json
+              cat /tmp/health.json | head -c 1000
               break
             fi
             sleep 10
           done
 
-      - name: Force prefetch (daily, 03:00 KST)
-        if: github.event.schedule == '0 18 * * *' || github.event_name == 'workflow_dispatch'
+      - name: Daily MARKET refresh (KST 06:00)
+        if: github.event.schedule == '0 21 * * *' || github.event.inputs.mode == 'market' || github.event.inputs.mode == 'all'
         run: |
-          curl -sS -m 60 "${{ vars.SY_URL }}/api/prefetch" | head -c 2000
+          curl -sS -m 90 "${{ vars.SY_URL }}/api/prefetch?type=market" | head -c 2000
+          echo ""
+
+      - name: Daily NEWS refresh (KST 09:00)
+        if: github.event.schedule == '0 0 * * *' || github.event.inputs.mode == 'news' || github.event.inputs.mode == 'all'
+        run: |
+          curl -sS -m 180 "${{ vars.SY_URL }}/api/prefetch?type=news" | head -c 2000
+          echo ""

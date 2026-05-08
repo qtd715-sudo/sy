@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import sys
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -416,17 +417,21 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/sy/undervalued":
                 return self._send_json(app.sy_undervalued(n=int(params.get("n", 10))))
             if path == "/api/prefetch":
-                # 외부 cron(GitHub Actions 등)이 호출. 모든 백그라운드 잡 즉시 실행
+                # 외부 cron(GitHub Actions)이 호출. ?type=news|market|all (기본 all)
                 s = app.scheduler
-                results = {
-                    "news":   s._job_news(),
-                    "market": s._job_market(),
-                    "hot":    s._job_hot_tickers(),
-                }
-                import time
-                for k in results.keys():
-                    s._last_runs[k] = time.time()
-                return self._send_json({"ok": True, "results": results, "ts": time.time()})
+                type_filter = params.get("type", "all").lower()
+                results: dict[str, Any] = {}
+                if type_filter in ("all", "news"):
+                    results["news"] = s._job_news()
+                    s._last_runs["news"] = time.time()
+                if type_filter in ("all", "market"):
+                    results["market"] = s._job_market()
+                    results["hot"] = s._job_hot_tickers()
+                    s._last_runs["market"] = time.time()
+                    s._last_runs["hot"] = time.time()
+                return self._send_json({
+                    "ok": True, "type": type_filter, "results": results, "ts": time.time(),
+                })
             if path == "/api/news":
                 return self._send_json(app.news_search(params.get("q", ""), n=int(params.get("n", 10))))
             if path == "/api/market-news":
