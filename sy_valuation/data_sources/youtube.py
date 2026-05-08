@@ -143,9 +143,14 @@ class YoutubeChannel:
         return out
 
     def _fetch_channel_page(self, channel_id: str, channel_name: str) -> list[VideoItem]:
-        """채널 영상 페이지 HTML 의 ytInitialData JSON 에서 videoRenderer 추출.
-        RSS 가 404 일 때 fallback."""
-        # @handle 대신 channel id 로 영상 페이지 직접 호출
+        """채널 영상 페이지 HTML 에서 영상 추출.
+        YouTube 는 React SPA 이고 ytInitialData JSON 에 데이터가 있음.
+
+        전략:
+        1) 모든 unique videoId 추출
+        2) videoId 근처의 title 추출 시도 (다양한 패턴)
+        3) thumbnail 은 i.ytimg.com 패턴으로 생성
+        """
         url = f"https://www.youtube.com/channel/{channel_id}/videos"
         data = fetch(url, timeout=self.timeout, headers={
             "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
@@ -156,35 +161,64 @@ class YoutubeChannel:
             html = data.decode("utf-8", errors="replace")
         except Exception:
             return []
-        # videoRenderer 또는 gridVideoRenderer 의 videoId/title/published/thumbnail 추출
+
+        # 1) ytInitialData JSON 추출
+        m = re.search(r'var ytInitialData = ({.+?});</script>', html)
+        json_text = m.group(1) if m else html
+        # 2) videoId 와 그 옆에 따라오는 title 패턴 매칭
+        # YouTube 의 richItemRenderer > content.videoRenderer 구조 안:
+        #   "videoId":"XXX",...,"title":{"runs":[{"text":"실제 제목"}]
+        # 또는 "title":{"accessibility":{"accessibilityData":{"label":"제목 본문 ..."}}}
         out: list[VideoItem] = []
-        seen = set()
-        # 정규식: "videoId":"...","title":{"runs":[{"text":"..."}]} 같은 부분
-        pattern = re.compile(
-            r'"videoId":"([a-zA-Z0-9_-]{11})","thumbnail":\{[^}]*"thumbnails":\[\{"url":"([^"]+)"[^}]*}[^}]*]\}[^}]*"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"',
-            re.DOTALL,
-        )
-        # 부족한 description/published 는 RSS 가 fail 한 상태라 비움
-        for m in pattern.finditer(html):
+        seen: set[str] = set()
+        # videoId 와 그 직후 약 800자 안의 title 매칭
+        for m in re.finditer(r'"videoId":"([a-zA-Z0-9_-]{11})"', json_text):
             vid = m.group(1)
             if vid in seen:
                 continue
             seen.add(vid)
-            thumb = m.group(2).replace("\\u0026", "&")
-            title_raw = m.group(3)
-            try:
-                import json as _json
-                title = _json.loads('"' + title_raw + '"')
-            except Exception:
-                title = title_raw
+
+            # videoId 위치 직후 1500자 안의 title 추출
+            window = json_text[m.end(): m.end() + 1500]
+            title = ""
+            # runs 패턴
+            tm = re.search(r'"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"', window)
+            if tm:
+                try:
+                    import json as _json
+                    title = _json.loads('"' + tm.group(1) + '"').strip()
+                except Exception:
+                    title = tm.group(1)
+            else:
+                # accessibilityData label 패턴 (제목 + 부가설명 포함)
+                am = re.search(r'"accessibility":\{"accessibilityData":\{"label":"((?:[^"\\]|\\.)*)"', window)
+                if am:
+                    try:
+                        import json as _json
+                        full = _json.loads('"' + am.group(1) + '"').strip()
+                        # "제목 by 채널명 12시간 전 1234 views 5분 30초" 같이 들어있음
+                        # 첫 단어부터 " by " 또는 마지막 시간/조회수 직전까지 추출
+                        title = re.split(r'\s+\d+\s*(시간|분|초|일|주|개월|년)\s*전', full)[0].strip()
+                        if " by " in title:
+                            title = title.rsplit(" by ", 1)[0].strip()
+                    except Exception:
+                        title = ""
+
+            if not title:
+                continue   # 제목 없으면 skip (재생목록 등)
+
+            # 너무 짧거나 노이즈 항목 skip
+            if len(title) < 3:
+                continue
+
             out.append(VideoItem(
                 video_id=vid,
-                title=title.strip(),
+                title=title,
                 link=f"https://www.youtube.com/watch?v={vid}",
                 published="",
                 updated="",
                 description="",
-                thumbnail=thumb,
+                thumbnail=f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
                 channel=channel_name or channel_id,
             ))
             if len(out) >= 30:
