@@ -93,6 +93,84 @@ class DartConnector:
             return []
         return res.get("list", [])
 
+    def latest_partial_financials(
+        self,
+        stock_code: str,
+        name: str,
+        sector: str,
+    ) -> dict[str, Any] | None:
+        """가장 최근 사업보고서 → 재무 항목 보강 (sample_financials raw 형태로).
+
+        DART OpenAPI 데이터에서 다음을 추출:
+        - 매출액, 영업이익, 당기순이익
+        - EBITDA (영업이익 + 감가상각비)
+        - 자산총계, 부채총계, 자본총계
+        - 순부채 (차입금 - 현금성자산)
+        """
+        from datetime import date
+        if not self.enabled:
+            return None
+        # 최근 2년치 시도 (직전 회계연도 우선)
+        cur_year = date.today().year
+        rows: list[dict[str, Any]] = []
+        for year in (cur_year - 1, cur_year - 2):
+            rows = self.fetch_financials(stock_code, year, "11011")
+            if rows:
+                break
+        if not rows:
+            return None
+
+        def find_amount(name_kw: str, sj: str = "") -> float:
+            """account_nm 이 name_kw 포함하는 행의 thstrm_amount(당기) 반환."""
+            for r in rows:
+                if sj and r.get("sj_div") != sj:
+                    continue
+                if name_kw in (r.get("account_nm") or ""):
+                    try:
+                        return float((r.get("thstrm_amount") or "0").replace(",", ""))
+                    except (ValueError, TypeError):
+                        return 0.0
+            return 0.0
+
+        # 손익계산서 (sj_div=IS or CIS)
+        revenue = find_amount("매출액", "IS") or find_amount("매출", "CIS")
+        op_inc = find_amount("영업이익", "IS") or find_amount("영업이익", "CIS")
+        net_inc = find_amount("당기순이익", "IS") or find_amount("당기순이익", "CIS")
+        # 재무상태표 (sj_div=BS)
+        total_assets = find_amount("자산총계", "BS")
+        total_liab = find_amount("부채총계", "BS")
+        total_equity = find_amount("자본총계", "BS")
+        # 현금흐름표 (sj_div=CF)
+        depr = find_amount("감가상각비", "CF")
+        # 순부채 추정 (차입금 - 현금)
+        cash = find_amount("현금및현금성자산", "BS")
+        st_borrow = find_amount("단기차입금", "BS")
+        lt_borrow = find_amount("장기차입금", "BS")
+        net_debt = (st_borrow + lt_borrow) - cash
+
+        ebitda = op_inc + depr if op_inc > 0 else 0
+        fcf = net_inc * 0.85 if net_inc > 0 else 0  # 보수 추정
+
+        if revenue <= 0 and op_inc <= 0 and net_inc <= 0:
+            return None
+
+        return {
+            "ticker": stock_code,
+            "name": name,
+            "sector": sector,
+            "revenue": revenue,
+            "operating_income": op_inc,
+            "net_income": net_inc,
+            "ebitda": ebitda,
+            "fcf": fcf,
+            "total_assets": total_assets,
+            "total_liabilities": total_liab,
+            "total_equity": total_equity,
+            "net_debt": net_debt,
+            "_dart_year": rows[0].get("bsns_year") if rows else "",
+            "_source": "dart",
+        }
+
     def fetch_disclosures(self, stock_code: str, page_count: int = 10) -> list[dict[str, Any]]:
         """최근 공시 목록."""
         if not self._corp_map:

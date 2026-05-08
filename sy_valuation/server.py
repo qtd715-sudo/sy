@@ -77,8 +77,12 @@ class App:
         return self.repo.search(q, limit=limit)
 
     def _resolve_financials(self, query: str):
-        """샘플 → Naver → Yahoo → None 순으로 시도."""
-        f = self.repo.get_or_build_financials(query, live=self.live, naver=self.naver)
+        """샘플 → DART (키있으면) → Naver 재무제표 → Naver 기본 → Yahoo → None."""
+        f = self.repo.get_or_build_financials(
+            query,
+            live=self.live, naver=self.naver,
+            dart=self.dart, naver_fin=self.naver_fin,
+        )
         if not f:
             return None, None, None
         # 실시간 가격으로 최신화

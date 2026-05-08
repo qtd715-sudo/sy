@@ -200,8 +200,8 @@ class FinancialsRepository:
             return None
         return self.to_financials(raw)
 
-    def get_or_build_financials(self, query: str, live=None, naver=None) -> Financials | None:
-        """샘플 → Naver Finance (한국 6자리 코드) → Yahoo (글로벌) → None."""
+    def get_or_build_financials(self, query: str, live=None, naver=None, dart=None, naver_fin=None) -> Financials | None:
+        """우선순위: 샘플 → DART (정식, 키 필요) → Naver 재무제표 → Naver 기본정보 → Yahoo → None."""
         f = self.get_financials(query)
         if f:
             return f
@@ -214,8 +214,68 @@ class FinancialsRepository:
         ticker = meta["ticker"]
         name = meta["name"]
 
-        # 1) Naver (한국 종목 6자리)
-        if naver is not None and ticker.isdigit() and len(ticker) == 6:
+        is_kr = ticker.isdigit() and len(ticker) == 6
+
+        # 1) DART (정식 재무제표, 한국 종목 + 키 필요)
+        if is_kr and dart is not None and getattr(dart, "enabled", False):
+            try:
+                raw = dart.latest_partial_financials(ticker, name, sector)
+                if raw and naver is not None:
+                    # DART 가 가격 정보는 안 줌 → Naver fundamentals 로 보강
+                    info = naver.fetch(ticker)
+                    if info:
+                        from .naver_fundamentals import _to_won
+                        price = _to_won(info.get("lastClosePrice", ""))
+                        eps = _to_won(info.get("eps", ""))
+                        bps = _to_won(info.get("bps", ""))
+                        mcap = _to_won(info.get("marketValue", ""))
+                        div = _to_won(info.get("dividend", ""))
+                        shares = mcap / price if price > 0 else 0
+                        if shares > 0:
+                            raw.update({
+                                "current_price": price,
+                                "shares_outstanding": shares,
+                                "eps": eps, "bps": bps,
+                                "sps": raw["revenue"] / shares if shares > 0 else 0,
+                                "dps": div,
+                                "roe": (raw["net_income"] / raw["total_equity"]) if raw.get("total_equity", 0) > 0 else 0,
+                                "growth_rate": 0.05,
+                                "market_cap": mcap,
+                                "sector_per": s.get("per", 12.0),
+                                "sector_pbr": s.get("pbr", 1.0),
+                                "sector_psr": s.get("psr", 1.0),
+                                "sector_ev_ebitda": s.get("ev_ebitda", 8.0),
+                            })
+                            return self.to_financials(raw)
+            except Exception:
+                pass
+
+        # 2) Naver 연간 재무제표 (DART 폴백)
+        if is_kr and naver_fin is not None and naver is not None:
+            try:
+                raw = naver_fin.to_partial_financials(ticker, name, sector)
+                if raw:
+                    info = naver.fetch(ticker)
+                    if info:
+                        from .naver_fundamentals import _to_won
+                        price = _to_won(info.get("lastClosePrice", ""))
+                        mcap = _to_won(info.get("marketValue", ""))
+                        shares = mcap / price if price > 0 else 0
+                        if shares > 0:
+                            raw["current_price"] = price
+                            raw["shares_outstanding"] = shares
+                            raw["sps"] = raw["revenue"] / shares if shares > 0 else 0
+                            raw["market_cap"] = mcap
+                            raw["sector_per"] = s.get("per", 12.0)
+                            raw["sector_pbr"] = s.get("pbr", 1.0)
+                            raw["sector_psr"] = s.get("psr", 1.0)
+                            raw["sector_ev_ebitda"] = s.get("ev_ebitda", 8.0)
+                            return self.to_financials(raw)
+            except Exception:
+                pass
+
+        # 3) Naver 기본 정보 (PER/PBR/EPS/BPS 만)
+        if is_kr and naver is not None:
             try:
                 built = naver.build_financials(ticker, name, sector, s)
                 if built and built.current_price > 0:
@@ -223,7 +283,7 @@ class FinancialsRepository:
             except Exception:
                 pass
 
-        # 2) Yahoo (해외 + 한국 폴백)
+        # 4) Yahoo (글로벌)
         if live is not None:
             try:
                 built = live.build_financials(ticker, name, sector, s)

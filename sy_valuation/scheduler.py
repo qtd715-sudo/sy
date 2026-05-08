@@ -124,13 +124,26 @@ class Scheduler:
             log.warning("KRX universe refresh failed: %s", e)
             return 0
 
+    def _job_dart_corpcodes(self) -> int:
+        """DART_API_KEY 가 있으면 corp_code 매핑 갱신 (분기 1회면 충분)."""
+        try:
+            if not self.app.dart.enabled:
+                return 0
+            mapping = self.app.dart.load_corp_codes(force=True)
+            log.info("refreshed DART corp_codes: %d entries", len(mapping))
+            return len(mapping)
+        except Exception as e:
+            log.warning("DART corp_codes refresh failed: %s", e)
+            return 0
+
     # -------- loop --------
 
     SCHEDULE = [
-        ("news",     3600,   "_job_news"),         # 1시간
-        ("market",   300,    "_job_market"),       # 5분
-        ("hot",      300,    "_job_hot_tickers"),  # 5분 (샘플+핫 종목 가격 — 스크리너 즉시 응답용)
-        ("krx_univ", 86400,  "_job_krx_universe"), # 24시간 — 코스피/코스닥 전종목
+        ("news",     3600,   "_job_news"),            # 1시간
+        ("market",   300,    "_job_market"),          # 5분
+        ("hot",      300,    "_job_hot_tickers"),     # 5분 — 샘플+핫 종목 가격 (스크리너용)
+        ("krx_univ", 86400,  "_job_krx_universe"),    # 24시간 — 코스피/코스닥 전종목
+        ("dart_cc",  604800, "_job_dart_corpcodes"),  # 7일 — DART corp_code 매핑 (DART_API_KEY 필요)
     ]
 
     def _loop(self) -> None:
