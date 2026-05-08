@@ -830,17 +830,53 @@ async function renderSampro(root) {
   root.innerHTML = `
     <h1 class="page-title">삼프로TV<span class="muted">／ 3PRO TV LATEST</span></h1>
     ${metaStrip('§07·VIDEO', 'YOUTUBE RSS', 'AUTO TOPIC', '30MIN CACHE')}
-    <p class="page-sub">YouTube 채널 RSS feed 기반. 영상 토픽 자동 분류 (주식·거시·부동산·글로벌·기업분석·기술 등) + 요약 표시.</p>
+    <p class="page-sub">YouTube 채널 RSS feed 기반. 영상 토픽 자동 분류 + 최신 영상 핵심 내용 요약.</p>
+
+    <div id="sproLatest" class="loading">최신 영상 불러오는 중…</div>
+
     <div class="card">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="muted" onclick="document.querySelector('#sproView').dataset.view='all';loadSampro()" style="padding:6px 12px;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--line);border-radius:6px;cursor:pointer">전체 시간순</button>
-        <button class="muted" onclick="document.querySelector('#sproView').dataset.view='topic';loadSampro()" style="padding:6px 12px;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--line);border-radius:6px;cursor:pointer">토픽별</button>
-        <a href="https://www.youtube.com/@3protv" target="_blank" style="margin-left:auto;color:var(--accent);font-size:13px">→ 채널 페이지</a>
+        <button onclick="document.querySelector('#sproView').dataset.view='all';loadSampro()" style="padding:8px 14px;background:var(--bg);color:var(--text);border:1px solid var(--line);font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer">전체 시간순</button>
+        <button onclick="document.querySelector('#sproView').dataset.view='topic';loadSampro()" style="padding:8px 14px;background:var(--bg);color:var(--text);border:1px solid var(--line);font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer">토픽별</button>
+        <a href="https://www.youtube.com/@3protv" target="_blank" style="margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase">→ 채널 페이지</a>
       </div>
     </div>
     <div id="sproView" data-view="all"></div>
   `;
   loadSampro();
+  loadSamproLatest();
+}
+
+async function loadSamproLatest() {
+  const out = $("#sproLatest");
+  if (!out) return;
+  try {
+    const v = await api("/api/youtube/latest");
+    if (v.error) {
+      out.innerHTML = "";
+      return;
+    }
+    const date = v.published ? new Date(v.published).toLocaleString("ko-KR", {year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
+    const summary = v.summary || v.description || "";
+    out.innerHTML = `
+      <div class="card" style="border-left:3px solid var(--text)">
+        <h3>★ 최신 영상 요약 <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text-mute)">${escapeHtml(date)}</span></h3>
+        <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+          ${v.thumbnail ? `<a href="${v.link}" target="_blank" style="border-bottom:none;flex-shrink:0"><img src="${v.thumbnail}" alt="" style="width:280px;max-width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--bg-elev-2)" loading="lazy"></a>` : ""}
+          <div style="flex:1;min-width:240px">
+            ${v.topic && v.topic !== "기타" ? `<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">[ ${escapeHtml(v.topic)} ]</div>` : ""}
+            <h2 style="font-size:20px;font-weight:700;letter-spacing:-0.02em;margin:0 0 12px;line-height:1.3">
+              <a href="${v.link}" target="_blank" style="border-bottom:none;color:var(--text)">${escapeHtml(v.title)}</a>
+            </h2>
+            <div style="font-size:13px;line-height:1.65;color:var(--text-dim);white-space:pre-wrap">${escapeHtml(summary)}</div>
+            <a href="${v.link}" target="_blank" style="display:inline-block;margin-top:14px;padding:8px 16px;background:var(--text);color:var(--bg);border-bottom:none;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase">▶ Watch on YouTube</a>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    out.innerHTML = "";
+  }
 }
 
 window.loadSampro = loadSampro;

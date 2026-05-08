@@ -95,7 +95,7 @@ class YoutubeChannel:
         cache = get_cache()
         cache_key = f"youtube:{channel_id}"
         cached = cache.get(cache_key)
-        if cached:
+        if cached and cached[0]:    # 빈 리스트는 사용 안 함 → 재시도
             return [VideoItem(**v) for v in cached[0]]
 
         url = self.RSS.format(cid=channel_id)
@@ -130,8 +130,53 @@ class YoutubeChannel:
                 channel=channel_name or channel_id,
             ))
 
-        cache.set(cache_key, [v.to_dict() for v in out], ttl_sec=self.CACHE_TTL, source="youtube_rss")
+        if out:
+            cache.set(cache_key, [v.to_dict() for v in out], ttl_sec=self.CACHE_TTL, source="youtube_rss")
         return out
+
+    # 단일 영상의 풀 description (RSS description 보다 더 길고 자세함)
+    def fetch_video_full_description(self, video_id: str) -> str:
+        cache = get_cache()
+        ck = f"youtube:desc:{video_id}"
+        cached = cache.get(ck)
+        if cached and cached[0]:
+            return cached[0]
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        data = fetch(url, timeout=self.timeout)
+        if not data:
+            return ""
+        try:
+            html = data.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+        # YouTube 페이지의 ytInitialData JSON 에서 shortDescription 또는 description.runs 추출
+        m = re.search(r'"shortDescription":"((?:[^"\\]|\\.)*)"', html)
+        if not m:
+            return ""
+        raw = m.group(1)
+        # JSON 이스케이프 풀기
+        try:
+            import json as _json
+            text = _json.loads('"' + raw + '"')
+        except Exception:
+            text = raw.replace("\\n", "\n").replace("\\\"", "\"")
+        text = text.strip()
+        if text:
+            cache.set(ck, text, ttl_sec=86400, source="youtube_html")  # 24h
+        return text
+
+    def latest_with_summary(self, channel_name: str = "삼프로TV") -> dict[str, Any] | None:
+        """가장 최근 영상 1개 + 풀 description 요약."""
+        videos = self.list_videos(channel_name, limit=1)
+        if not videos:
+            return None
+        v = videos[0]
+        full_desc = self.fetch_video_full_description(v["video_id"])
+        if full_desc:
+            v["full_description"] = full_desc
+            # 첫 800자 요약
+            v["summary"] = (full_desc[:800] + ("..." if len(full_desc) > 800 else ""))
+        return v
 
     def fetch_all(self) -> dict[str, list[VideoItem]]:
         out: dict[str, list[VideoItem]] = {}

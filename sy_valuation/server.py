@@ -317,6 +317,10 @@ class App:
     def youtube_grouped(self, channel: str = "삼프로TV") -> dict[str, list[dict[str, Any]]]:
         return self.youtube.grouped_by_topic(channel)
 
+    def youtube_latest(self, channel: str = "삼프로TV") -> dict[str, Any]:
+        v = self.youtube.latest_with_summary(channel)
+        return v or {"error": "최신 영상을 가져오지 못했습니다."}
+
     # Naver 연간 재무제표
     def financials_annual(self, code: str) -> dict[str, Any]:
         d = self.naver_fin.fetch(code, period="annual")
@@ -460,6 +464,8 @@ class Handler(BaseHTTPRequestHandler):
                 ))
             if path == "/api/youtube/grouped":
                 return self._send_json(app.youtube_grouped(channel=params.get("channel", "삼프로TV")))
+            if path == "/api/youtube/latest":
+                return self._send_json(app.youtube_latest(channel=params.get("channel", "삼프로TV")))
             if path == "/api/financials/annual":
                 return self._send_json(app.financials_annual(params.get("q", "")))
             if path == "/api/financials/quarter":
