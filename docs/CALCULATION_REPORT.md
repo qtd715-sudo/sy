@@ -1,11 +1,25 @@
 # SY Valuation 계산식 + 기술 보고서
 
-> **작성일**: 2026-05-08
-> **버전**: v0.1 (커밋 `18de43e` 기준)
+> **작성일**: 2026-05-08 (UI 리디자인 + 일일 cron + 삼프로TV 폴백 추가)
+> **버전**: v0.1 (커밋 `5da7b72` 기준)
 > **운영 URL**: https://sy-valuation.onrender.com
 > **저장소**: https://github.com/qtd715-sudo/sy
 
 본 문서는 SY Valuation 시스템의 **기술 스택**, **각 화면별 계산 로직**, **데이터 출처(정적/자동)** 를 정직하게 정리한 보고서입니다.
+
+## 🆕 최근 변경 (2026-05-08)
+
+| 변경 | 상세 |
+|---|---|
+| **UI 리디자인** | Warm minimal monochrome (#fafaf9 + #0a0a0a). Inter + JetBrains Mono + Noto Sans KR. 잡지 스타일 KPI / 1px 헤어라인 / 번호 라벨 메뉴 (`01·DASHBOARD`) |
+| **페이지 헤드 날짜** | 모든 페이지 meta-strip 에 KST 오늘 날짜 + 현재 시각 자동 표시 |
+| **뉴스 시각 KST** | RSS pubDate (GMT) → `05.08 01:37 KST` 변환 |
+| **일일 자동 갱신 시간 분리** | KST 06:00 시장 데이터 / KST 09:00 뉴스 (GitHub Actions cron 2개) |
+| **`/api/prefetch?type=`** | `market` / `news` / `all` 분기 처리 |
+| **삼프로TV 다중 폴백** | RSS → Invidious public API → 채널 페이지 HTML 스크레이핑 |
+| **삼프로TV 최신 영상 요약** | YouTube watch 페이지의 `shortDescription` 추출 → 800자 요약 카드 (페이지 상단) |
+| **DART 통합** | `DART_API_KEY` 등록 시 정식 재무제표 자동 사용 (1순위, Naver 폴백) |
+| **0/null 데이터 → "-" 표시** | 화면 전체 일관 처리 (해외 비샘플 종목 대응) |
 
 ---
 
@@ -236,27 +250,52 @@ Python 모듈 22개:
 
 ## 📌 데이터 출처 — 솔직히
 
-| 데이터 종류 | 출처 | 자동 갱신? | 비고 |
-|---|---|---|---|
-| **현재가/시세** | Naver Finance polling API | ✅ 5분 주기 | 한국 6자리 코드 1순위, Yahoo 폴백 |
-| **시가총액** | 현재가 × 발행주식수 | ✅ 자동 계산 | |
-| **EPS, BPS, PER, PBR** | Naver integration API (m.stock) | ✅ 자동 | 모든 한국 종목 |
-| **매출, 영업이익, 당기순이익, ROE, 부채비율** | Naver finance/annual API | ✅ 자동 (연간 발표 시) | NEW: 16개 지표 |
-| **EBITDA** | Naver: 영업이익 × 1.3 추정 / DART: 영업이익+감가상각 정확 | ⚠️ 추정 / ✅ 정확 (DART 키) | |
-| **FCF** | Naver: 순이익 × 0.85 추정 / DART: OCF-CAPEX 정확 | ⚠️ 추정 / ✅ 정확 (DART 키) | |
-| **자산총계, 부채총계, 순자산** | DART (키 있을 때) / `sample_financials.json` (없으면) | ✅ 자동 (DART 키) / ❌ 정적 | 샘플 55종목만 정확 |
-| **순부채** | DART (키 있을 때) / 추정 | ✅ 자동 (DART 키) | 차입금 - 현금성자산 |
-| **섹터별 평균 멀티플** | `sample_financials.json` (sectors) | ❌ 정적 | per/pbr/psr/ev_ebitda |
-| **피어 그룹** | 자동 (같은 섹터 + 매출 0.3x~3x) | ✅ 자동 | sample 55종목 안에서 매칭 |
-| **뉴스 (29 토픽)** | Bing News RSS (한국어) | ✅ 1시간 캐시 | OR 미지원 → 단일 키워드 |
-| **삼프로TV 영상** | YouTube RSS feed | ✅ 30분 캐시 | NEW |
-| **원자재/지수/환율** | Yahoo Finance v8 chart | ✅ 5분 캐시 | |
-| **KOSPI/KOSDAQ 전 종목 리스트** | Naver 시가총액 페이지 스크레이핑 | ✅ 24시간 캐시 | 약 4,000+ 종목 |
+### 핵심: 종목별 평가 동작 흐름
 
-### 🚨 중요 정직한 한계
-- **DART API 키 미등록 시**: EBITDA/FCF/자산/부채 → 추정값 또는 sample 정적 데이터
-- **DART API 키 등록 시** (`DART_API_KEY` 환경변수): 모든 KOSPI/KOSDAQ 정식 재무제표 자동 갱신
-- 진짜 자동 갱신 활성화: https://opendart.fss.or.kr/ 키 발급 → Render Environment 등록 (5분)
+```
+사용자 검색
+   ↓
+1) 샘플 (sample_financials.json, 55종목) — 가장 빠르고 정확
+2) DART_API_KEY 있으면 → DART 정식 재무제표 (모든 KOSPI/KOSDAQ)
+3) Naver 연간 재무제표 API (모든 한국 6자리 코드)
+4) Naver 기본 정보 API (PER/PBR/EPS/BPS)
+5) Yahoo Finance quoteSummary (해외 종목)
+6) Yahoo chart meta (마지막 폴백, 가격/시총만)
+   ↓
+계산 가능한 모델만 작동, 부족한 항목은 "-" 표시
+```
+
+### 데이터 항목별 출처
+
+| 데이터 종류 | 출처 | 자동 갱신? | 커버리지 |
+|---|---|---|---|
+| **현재가/시세** | Naver Finance polling | ✅ 5분 주기 | 한국 전 종목 + Yahoo (글로벌) |
+| **시가총액** | 현재가 × 발행주식수 | ✅ 자동 계산 | 전체 |
+| **EPS, BPS, PER, PBR** | Naver integration API | ✅ 자동 | 모든 한국 종목 |
+| **매출, 영업이익, 순이익, ROE, 부채비율, 당좌비율, 유보율, 배당** | Naver finance/annual API (16지표) | ✅ 자동 | 모든 한국 6자리 코드 |
+| **EBITDA** | DART: 영업이익+감가상각 (정확) / Naver: 영업이익×1.3 (추정) | ✅ DART 정확 / ⚠ Naver 추정 | DART 키 등록 시 모든 종목 정확 |
+| **FCF** | DART: OCF-CAPEX (정확) / Naver: 순이익×0.85 (추정) | ✅ DART 정확 / ⚠ Naver 추정 | DART 키 등록 시 모든 종목 정확 |
+| **자산총계, 부채총계, 순자산, 순부채** | DART (정확) | ✅ DART 키 있을 때 | 모든 KOSPI/KOSDAQ |
+| **샘플 보강 데이터 (55종목)** | `sample_financials.json` (수동 큐레이션) | ❌ 정적 | 한국 블루칩 55종목 |
+| **섹터별 평균 멀티플 (12 섹터)** | `sample_financials.json` (sectors) | ❌ 정적 | 12 섹터 |
+| **피어 그룹** | 자동 (같은 섹터 + 매출 0.3x~3x) | ✅ 자동 | sample 55종목 풀에서 매칭 |
+| **글로벌 종목 재무 (US/ETF)** | Yahoo Finance v10 quoteSummary | ⚠ Render IP 일부 차단 | quoteSummary 막힐 때 chart meta 폴백 (가격만) |
+| **뉴스 (29 토픽)** | Bing News RSS (한국어) | ✅ 1시간 캐시 + 매일 KST 09:00 강제 갱신 | OR 미지원 → 단일 키워드 |
+| **삼프로TV 영상** | RSS → Invidious API → 채널 페이지 HTML (3단 폴백) | ✅ 30분 캐시 | YouTube 측 RSS 차단 시 자동 우회 |
+| **원자재/지수/환율** | Yahoo Finance v8 chart | ✅ 5분 캐시 + 매일 KST 06:00 강제 갱신 | 64종 (지수 13/환율 8/채권 4/원자재 15/가상자산 7) |
+| **KOSPI/KOSDAQ 전 종목 리스트** | Naver 시가총액 페이지 스크레이핑 | ✅ 24시간 캐시 | 약 4,089종목 |
+| **DART corp_codes 매핑** | DART OpenAPI (키 필요) | ✅ 7일 갱신 | 모든 등록 법인 |
+
+### "55종목만 정확" 의 진짜 의미 (오해 정정)
+
+**잘못된 이해**: 55종목 외에는 평가 불가
+**정확한 이해**:
+- 샘플 55종목은 자산/부채까지 **수동으로 큐레이션** → 모든 9개 모델 + SY 평가법 100% 정밀 작동
+- **나머지 한국 4,000+ 종목**: Naver 연간 재무제표 API 로 16개 지표 자동 fetch → DCF/RIM/PER/PBR/PSR/Lynch 등 대부분 모델 자동 작동. EBITDA/FCF 는 추정값 사용
+- **DART_API_KEY 등록 시**: 모든 KOSPI/KOSDAQ 의 EBITDA/FCF/자산/부채까지 정식 데이터 → SY 평가법까지 정확히 작동
+- **해외 종목 (AAPL 등)**: Yahoo quoteSummary 작동 시 모든 모델 작동. Render IP 에서 일부 차단되면 chart meta 폴백 → 가격/시총만 표시, 다른 항목은 "-"
+
+→ **계산 가능한 부분까지 보여주고, 부족한 항목은 "-"** (사용자 요청대로 일관 적용)
 
 ---
 
@@ -515,22 +554,36 @@ enterprise_max = max(수익_max, 자산_book, 상대_max)
 
 ### 7. 🎬 삼프로TV
 
-**경로**: `#/sampro`  (NEW)
+**경로**: `#/sampro`
 
 #### 표시 내용
-- 삼프로TV YouTube 채널 최신 20개 영상
-- 썸네일 + 제목 + 요약 + 발행 시각
-- "전체 시간순" / "토픽별" 토글
+1. **★ 최신 영상 요약 카드** (페이지 상단) — 가장 최근 영상의 풀 description 800자 + 큰 썸네일
+2. 삼프로TV YouTube 채널 최신 20개 영상 (전체 시간순 / 토픽별 토글)
+3. 영상별: 썸네일 + 제목 + 토픽 라벨 + 발행 시각
 
-#### 데이터 흐름
+#### 데이터 흐름 (3단 폴백)
 ```
-GET https://www.youtube.com/feeds/videos.xml?channel_id=UChlv4GSd7OQl3js-jkLOnFA
+1) RSS feed: https://www.youtube.com/feeds/videos.xml?channel_id=UCxxx
+   ↓ (404/empty 시)
+2) Invidious public API: /api/v1/channels/{id}/videos
+   - 5개 인스턴스 순회 (invidious.fdn.fr / yewtu.be / ...)
+   ↓ (모두 실패 시)
+3) YouTube channel 페이지 HTML 의 ytInitialData JSON 정규식 추출
    ↓
-XML 파싱 → VideoItem (title, link, published, description, thumbnail)
-   ↓
-SQLite 캐시 (30분 TTL)
+SQLite 캐시 (30분 TTL, 빈 결과는 캐시 안 함)
    ↓
 토픽 자동 분류 (제목 키워드 매칭) → 화면 노출
+```
+
+#### 최신 영상 요약 (NEW)
+```
+GET /api/youtube/latest
+   ↓
+1) 최신 영상 1개 가져오기
+2) https://www.youtube.com/watch?v={id} HTML fetch
+3) ytInitialData 의 "shortDescription" 정규식 추출 (RSS description 보다 풍부)
+4) JSON 이스케이프 풀고 첫 800자 → 페이지 상단 카드에 표시
+5) 24시간 캐시
 ```
 
 #### 토픽 자동 분류 (8 카테고리)
@@ -617,11 +670,17 @@ SQLite 캐시 (1시간 TTL)
 
 부팅 시 모든 잡을 병렬로 실행 (서로 독립 thread).
 
-### GitHub Actions cron (외부)
+### GitHub Actions cron (외부, UTC 기준)
 ```
-매 14분    : /api/health 핑 (Render free tier sleep 방지)
-매일 03:00 KST: /api/prefetch 호출 (전체 강제 갱신)
+매 14분        : /api/health 핑 (Render free tier sleep 방지)
+매일 KST 06:00 : /api/prefetch?type=market — 시세/원자재/지수 강제 갱신
+매일 KST 09:00 : /api/prefetch?type=news   — 뉴스 강제 갱신
+수동 트리거    : workflow_dispatch (mode=all|market|news|ping 선택)
 ```
+
+cron UTC 변환:
+- KST 06:00 → UTC 21:00 (전날) → cron `0 21 * * *`
+- KST 09:00 → UTC 00:00 (당일) → cron `0 0 * * *`
 
 ### Render 자동 재배포
 - main 브랜치 push 시 자동 빌드 + 재배포 (3분)
