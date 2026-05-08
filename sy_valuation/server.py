@@ -29,7 +29,7 @@ from typing import Any
 
 from .data_sources import (
     FinancialsRepository, NewsConnector, CommodityConnector, PriceConnector, DartConnector,
-    LiveFinancials, NaverFundamentals,
+    LiveFinancials, NaverFundamentals, NaverFinancials, YoutubeChannel,
 )
 from .data_sources.cache import get_cache
 from .valuation.engine import value_company
@@ -52,6 +52,8 @@ class App:
         self.dart = DartConnector()
         self.live = LiveFinancials()
         self.naver = NaverFundamentals()
+        self.naver_fin = NaverFinancials()
+        self.youtube = YoutubeChannel()
         self.scheduler = Scheduler(self)
 
     # ---------- API handlers ----------
@@ -302,6 +304,27 @@ class App:
         groups = self.commodities.watchlist_groups()
         return {g: [q.to_dict() for q in qs] for g, qs in groups.items()}
 
+    # 삼프로TV / YouTube
+    def youtube_videos(self, channel: str = "삼프로TV", limit: int = 20) -> dict[str, Any]:
+        videos = self.youtube.list_videos(channel, limit=limit)
+        return {"channel": channel, "videos": videos, "count": len(videos)}
+
+    def youtube_grouped(self, channel: str = "삼프로TV") -> dict[str, list[dict[str, Any]]]:
+        return self.youtube.grouped_by_topic(channel)
+
+    # Naver 연간 재무제표
+    def financials_annual(self, code: str) -> dict[str, Any]:
+        d = self.naver_fin.fetch(code, period="annual")
+        if not d:
+            return {"error": "재무제표를 가져오지 못했습니다 (한국 6자리 코드만 지원)."}
+        return d
+
+    def financials_quarter(self, code: str) -> dict[str, Any]:
+        d = self.naver_fin.fetch(code, period="quarter")
+        if not d:
+            return {"error": "분기 재무제표 조회 실패."}
+        return d
+
     def commodity_list(self) -> list[dict[str, Any]]:
         return [c.to_dict() for c in self.commodities.watchlist()]
 
@@ -421,6 +444,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(app.news_topic(params.get("topic", "코스피"), n=int(params.get("n", 10))))
             if path == "/api/commodities":
                 return self._send_json(app.commodity_groups())
+            if path == "/api/youtube":
+                return self._send_json(app.youtube_videos(
+                    channel=params.get("channel", "삼프로TV"),
+                    limit=int(params.get("n", 20)),
+                ))
+            if path == "/api/youtube/grouped":
+                return self._send_json(app.youtube_grouped(channel=params.get("channel", "삼프로TV")))
+            if path == "/api/financials/annual":
+                return self._send_json(app.financials_annual(params.get("q", "")))
+            if path == "/api/financials/quarter":
+                return self._send_json(app.financials_quarter(params.get("q", "")))
             if path == "/api/commodities/flat":
                 return self._send_json(app.commodity_list())
             if path == "/api/price":

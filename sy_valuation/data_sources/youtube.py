@@ -1,0 +1,160 @@
+"""YouTube 채널 RSS 기반 영상 리스트 + 간이 요약.
+
+소스: https://www.youtube.com/feeds/videos.xml?channel_id=CHANNEL_ID
+
+기본 채널: 삼프로TV (UChlv4GSd7OQl3js-jkLOnFA)
+환경변수 SAMPRO_CHANNEL_ID 로 변경 가능.
+환경변수 YT_CHANNELS 로 다중 채널 등록 가능 (콤마 구분).
+
+요약: 제목 + 첫 200자 description 표시 (자막은 별도 API 필요).
+"""
+
+from __future__ import annotations
+import os
+import re
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, asdict
+from typing import Any
+
+from .http_util import fetch
+from .cache import get_cache
+
+
+SAMPRO_CHANNEL_ID = "UChlv4GSd7OQl3js-jkLOnFA"
+NS = {
+    "atom": "http://www.w3.org/2005/Atom",
+    "yt": "http://www.youtube.com/xml/schemas/2015",
+    "media": "http://search.yahoo.com/mrss/",
+}
+
+
+@dataclass
+class VideoItem:
+    video_id: str
+    title: str
+    link: str
+    published: str
+    updated: str
+    description: str
+    thumbnail: str
+    channel: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+# 토픽 자동 분류 (제목 키워드 매칭)
+TOPIC_KEYWORDS = {
+    "주식/시황":   ["코스피", "코스닥", "주식", "증시", "지수", "상한가", "하한가", "급등", "급락"],
+    "거시/경제":   ["FOMC", "금리", "기준금리", "인플레", "GDP", "경제지표", "한은", "연준"],
+    "채권/외환":   ["국채", "환율", "달러", "원화", "엔화", "위안화"],
+    "부동산":      ["부동산", "아파트", "분양", "청약", "전세", "매매가"],
+    "글로벌":      ["미국", "중국", "일본", "유럽", "글로벌", "원자재", "원유"],
+    "기업분석":    ["기업분석", "실적", "어닝", "실적발표", "재무"],
+    "기술/AI":     ["AI", "반도체", "테크", "엔비디아", "TSMC"],
+    "정치":        ["대통령", "정부", "정책", "국회", "선거"],
+    "기타":        [],
+}
+
+
+def _classify_topic(title: str) -> str:
+    title_l = title.lower()
+    for topic, keywords in TOPIC_KEYWORDS.items():
+        for kw in keywords:
+            if kw.lower() in title_l:
+                return topic
+    return "기타"
+
+
+def _summarize(title: str, description: str, max_len: int = 200) -> str:
+    """제목 + 설명 첫 N자 → 한 줄 요약."""
+    desc = re.sub(r"\s+", " ", description or "").strip()
+    if len(desc) > max_len:
+        desc = desc[:max_len].rstrip() + "..."
+    return desc or title
+
+
+class YoutubeChannel:
+    RSS = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+    CACHE_TTL = 1800  # 30분
+
+    def __init__(self, timeout: int = 8):
+        self.timeout = timeout
+        # 환경변수에서 추가 채널 로드 (콤마 구분)
+        extra = os.environ.get("YT_CHANNELS", "")
+        self.channels = {
+            "삼프로TV": os.environ.get("SAMPRO_CHANNEL_ID", SAMPRO_CHANNEL_ID),
+        }
+        for pair in extra.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                name, cid = pair.split(":", 1)
+                self.channels[name.strip()] = cid.strip()
+
+    def fetch_channel(self, channel_id: str, channel_name: str = "") -> list[VideoItem]:
+        cache = get_cache()
+        cache_key = f"youtube:{channel_id}"
+        cached = cache.get(cache_key)
+        if cached:
+            return [VideoItem(**v) for v in cached[0]]
+
+        url = self.RSS.format(cid=channel_id)
+        data = fetch(url, timeout=self.timeout)
+        if not data:
+            return []
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError:
+            return []
+
+        out: list[VideoItem] = []
+        for entry in root.findall("atom:entry", NS):
+            video_id = (entry.findtext("yt:videoId", default="", namespaces=NS) or "").strip()
+            title = (entry.findtext("atom:title", default="", namespaces=NS) or "").strip()
+            link_el = entry.find("atom:link", NS)
+            link = link_el.get("href") if link_el is not None else ""
+            published = entry.findtext("atom:published", default="", namespaces=NS) or ""
+            updated = entry.findtext("atom:updated", default="", namespaces=NS) or ""
+            mg = entry.find("media:group", NS)
+            description = ""
+            thumbnail = ""
+            if mg is not None:
+                description = (mg.findtext("media:description", default="", namespaces=NS) or "").strip()
+                th_el = mg.find("media:thumbnail", NS)
+                if th_el is not None:
+                    thumbnail = th_el.get("url", "")
+            out.append(VideoItem(
+                video_id=video_id, title=title, link=link,
+                published=published, updated=updated,
+                description=description, thumbnail=thumbnail,
+                channel=channel_name or channel_id,
+            ))
+
+        cache.set(cache_key, [v.to_dict() for v in out], ttl_sec=self.CACHE_TTL, source="youtube_rss")
+        return out
+
+    def fetch_all(self) -> dict[str, list[VideoItem]]:
+        out: dict[str, list[VideoItem]] = {}
+        for name, cid in self.channels.items():
+            out[name] = self.fetch_channel(cid, name)
+        return out
+
+    def list_videos(self, channel_name: str = "삼프로TV", limit: int = 20) -> list[dict[str, Any]]:
+        """UI 용 — 영상 dict 리스트 (요약/토픽 포함)."""
+        cid = self.channels.get(channel_name, SAMPRO_CHANNEL_ID)
+        videos = self.fetch_channel(cid, channel_name)
+        out = []
+        for v in videos[:limit]:
+            d = v.to_dict()
+            d["topic"] = _classify_topic(v.title)
+            d["summary"] = _summarize(v.title, v.description)
+            out.append(d)
+        return out
+
+    def grouped_by_topic(self, channel_name: str = "삼프로TV", limit: int = 30) -> dict[str, list[dict[str, Any]]]:
+        videos = self.list_videos(channel_name, limit=limit)
+        groups: dict[str, list[dict[str, Any]]] = {t: [] for t in TOPIC_KEYWORDS}
+        for v in videos:
+            topic = v.get("topic", "기타")
+            groups.setdefault(topic, []).append(v)
+        return {t: vs for t, vs in groups.items() if vs}

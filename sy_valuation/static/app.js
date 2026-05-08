@@ -109,6 +109,7 @@ async function render() {
   if (path.startsWith("/recommend"))   { setActiveNav("recommend");   return renderRecommend(root, params); }
   if (path.startsWith("/sy-screener")) { setActiveNav("sy-screener"); return renderSyScreener(root); }
   if (path.startsWith("/sy-detail"))   { setActiveNav("sy-detail");   return renderSyDetail(root, params); }
+  if (path.startsWith("/sampro"))      { setActiveNav("sampro");      return renderSampro(root); }
   if (path.startsWith("/news"))        { setActiveNav("news");        return renderNews(root); }
   root.innerHTML = `<div class="error">알 수 없는 페이지: ${path}</div>`;
 }
@@ -773,6 +774,73 @@ function renderSyDetailContent(d) {
       </table>
     </div>
   `;
+}
+
+// ---------- 삼프로TV ----------
+async function renderSampro(root) {
+  root.innerHTML = `
+    <h1 class="page-title">🎬 삼프로TV 최신 영상</h1>
+    <p class="page-sub">YouTube 채널 RSS feed 기반. 토픽 자동 분류 + 영상 요약. 30분 캐시.</p>
+    <div class="card">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="muted" onclick="document.querySelector('#sproView').dataset.view='all';loadSampro()" style="padding:6px 12px;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--line);border-radius:6px;cursor:pointer">전체 시간순</button>
+        <button class="muted" onclick="document.querySelector('#sproView').dataset.view='topic';loadSampro()" style="padding:6px 12px;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--line);border-radius:6px;cursor:pointer">토픽별</button>
+        <a href="https://www.youtube.com/@3protv" target="_blank" style="margin-left:auto;color:var(--accent);font-size:13px">→ 채널 페이지</a>
+      </div>
+    </div>
+    <div id="sproView" data-view="all"></div>
+  `;
+  loadSampro();
+}
+
+window.loadSampro = loadSampro;
+async function loadSampro() {
+  const out = $("#sproView");
+  if (!out) return;
+  const view = out.dataset.view || "all";
+  out.innerHTML = `<div class="loading">불러오는 중…</div>`;
+  try {
+    if (view === "topic") {
+      const data = await api(`/api/youtube/grouped?channel=${encodeURIComponent("삼프로TV")}`);
+      const html = Object.entries(data).map(([topic, vids]) => `
+        <div class="card">
+          <h3>${escapeHtml(topic)} <span class="muted" style="font-weight:400">(${vids.length})</span></h3>
+          ${renderSproVideoList(vids)}
+        </div>
+      `).join("");
+      out.innerHTML = html || `<div class="card error">영상을 불러오지 못했습니다.</div>`;
+    } else {
+      const data = await api(`/api/youtube?n=20`);
+      const vids = data.videos || [];
+      out.innerHTML = `
+        <div class="card">
+          <h3>${escapeHtml(data.channel || "삼프로TV")} 최신 ${vids.length}개</h3>
+          ${renderSproVideoList(vids)}
+        </div>
+      `;
+    }
+  } catch (e) {
+    out.innerHTML = `<div class="card error">${e.message}</div>`;
+  }
+}
+
+function renderSproVideoList(videos) {
+  if (!videos || !videos.length) return `<div class="muted">영상 없음</div>`;
+  return `<ul class="news-list">${videos.map(v => {
+    const date = v.published ? new Date(v.published).toLocaleString("ko-KR", {year:"2-digit",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+    const topicTag = v.topic && v.topic !== "기타"
+      ? `<span class="tag" style="background:rgba(124,92,255,0.15);color:var(--accent-2);margin-right:6px">${escapeHtml(v.topic)}</span>` : "";
+    return `<li style="display:flex;gap:12px;align-items:flex-start">
+      ${v.thumbnail ? `<img src="${v.thumbnail}" alt="" style="width:120px;height:67px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--bg-elev-2)" loading="lazy">` : ""}
+      <div style="flex:1;min-width:0">
+        <div class="title" style="margin-bottom:4px">
+          ${topicTag}<a href="${v.link}" target="_blank" rel="noopener">${escapeHtml(v.title)}</a>
+        </div>
+        ${v.summary ? `<div class="muted" style="font-size:12px;line-height:1.4;margin-bottom:4px">${escapeHtml(v.summary)}</div>` : ""}
+        <div class="meta">${escapeHtml(date)}</div>
+      </div>
+    </li>`;
+  }).join("")}</ul>`;
 }
 
 // ---------- NEWS (topical) ----------
