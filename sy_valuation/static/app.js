@@ -191,11 +191,16 @@ function attachAutocomplete(input, onSelect) {
   input.addEventListener("blur", () => setTimeout(close, 150));
 }
 
+function metaStrip(...parts) {
+  return `<div class="meta-strip">${parts.map(p => `<span>${p}</span>`).join('<span class="dot">◆</span>')}</div>`;
+}
+
 // ---------- DASHBOARD ----------
 async function renderDashboard(root) {
   root.innerHTML = `
-    <h1 class="page-title">대시보드</h1>
-    <p class="page-sub">주요 지수·환율·채권금리·원자재 + 시장 종합 뉴스 + 저평가 Top5.</p>
+    <h1 class="page-title">시장을 한눈에<span class="muted">／ MARKET PULSE</span></h1>
+    ${metaStrip('§01·DASHBOARD', '12 INDICATORS', 'NEWS · LIVE', 'TOP-5 SCREENER')}
+    <p class="page-sub">주요 지수·환율·채권금리·원자재 시세 + 12개 시장 토픽 뉴스 + 저평가 Top5 미리보기. 5분 주기 자동 갱신.</p>
 
     <div id="commodGroups" class="loading">시세 불러오는 중…</div>
 
@@ -264,8 +269,9 @@ function renderNewsList(items) {
 // ---------- UNDERVALUED ----------
 async function renderUndervalued(root) {
   root.innerHTML = `
-    <h1 class="page-title">저평가 Top 10 <span class="muted" style="font-size:13px">(주당 적정주가 기준)</span></h1>
-    <p class="page-sub">DCF·RIM·PER·PBR·PSR·EV/EBITDA·Graham·Lynch <strong>9개 모델 가중평균</strong>으로 산출한 <strong>주당 적정주가</strong> 대비 현재가 디스카운트. 정량 필터(ROE≥5%, 흑자, 부채) 통과 종목.</p>
+    <h1 class="page-title">저평가 Top 10<span class="muted">／ 9-MODEL WEIGHTED FAIR PRICE</span></h1>
+    ${metaStrip('§02·SCREENER', 'DCF · RIM · MULTIPLES', 'GRAHAM · LYNCH', 'QUANT FILTER')}
+    <p class="page-sub">9개 모델 가중평균 적정주가 vs 현재가 디스카운트. 정량 필터(ROE ≥ 5% · 흑자 · 부채) 통과 + 종합 점수 정렬.</p>
     <div class="card">
       <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
         <span class="muted">정확평가가 가능한 한국 블루칩 표본 기반. DART 연동 시 실제 재무로 자동 교체됨.</span>
@@ -335,8 +341,9 @@ function bindRowClicks(container) {
 async function renderSearch(root, params) {
   const q = params.q || "";
   root.innerHTML = `
-    <h1 class="page-title">종목 가치평가</h1>
-    <p class="page-sub">국내/해외 주식 + ETF. 입력 중 자동완성 — 샘플에 없는 종목은 Yahoo Finance 실시간 데이터로 평가.</p>
+    <h1 class="page-title">기업 가치 평가<span class="muted">／ EQUITY VALUATION</span></h1>
+    ${metaStrip('§03·VALUATION', 'KOSPI · KOSDAQ · US · ETF', 'AUTO-COMPLETE', '9 MODELS')}
+    <p class="page-sub">국내/해외 주식 + ETF. 자동완성 검색 → 9개 모델 분포 + 가중평균 적정주가. 비샘플 종목은 Naver/Yahoo 실시간 데이터로 평가.</p>
     <div class="card">
       <form id="searchForm" style="display:flex;gap:8px;position:relative">
         <input id="qInp" type="text" value="${escapeHtml(q)}" placeholder="삼성전자, AAPL, QQQ, 005930 …" autocomplete="off"
@@ -467,8 +474,9 @@ function modelLabel(k) {
 async function renderRecommend(root, params) {
   const q = params.q || "";
   root.innerHTML = `
-    <h1 class="page-title">투자 추천</h1>
-    <p class="page-sub">가치평가 + 뉴스 감성 + 변동성. 단기는 매수/매도/손절가, 장기는 투자 사유.</p>
+    <h1 class="page-title">투자 분석<span class="muted">／ INVESTMENT THESIS</span></h1>
+    ${metaStrip('§04·ANALYSIS', 'SHORT-TERM · BUY/SELL/STOP', 'LONG-TERM · THESIS', 'NEWS SENTIMENT')}
+    <p class="page-sub">가치평가 + 뉴스 감성 + 변동성 결합. 단기는 매수·매도·손절가, 장기는 정량 근거 + 리스크.</p>
     <div class="card">
       <form id="recForm" style="display:flex;gap:8px;position:relative">
         <input id="rqInp" type="text" value="${escapeHtml(q)}" placeholder="종목명, 코드, ETF 심볼 …" autocomplete="off"
@@ -558,8 +566,9 @@ function bigKrwAuto(n) {
 
 async function renderSyScreener(root) {
   root.innerHTML = `
-    <h1 class="page-title">⭐ SY 평가법 저평가 종목 <span class="muted" style="font-size:13px">(기업가치 vs 시총)</span></h1>
-    <p class="page-sub"><strong>수익가치 + 자산가치 + 상대가치</strong> 3접근법으로 <strong>기업가치 범위(min/mid/max)</strong> 산출 후 시가총액과 비교. 자동 피어 그룹(같은 섹터+매출 비슷한 기업)으로 멀티플 계산.</p>
+    <h1 class="page-title">SY 평가법 저평가<span class="muted">／ 3-APPROACH SCREENER</span></h1>
+    ${metaStrip('§05·SY-METHOD', 'INCOME · ASSET · MARKET', 'AUTO PEER GROUP', 'MIN / MID / MAX')}
+    <p class="page-sub">수익가치 + 자산가치 + 상대가치 3접근법으로 기업가치 범위(min/mid/max) 산출 후 시총 비교. 자동 피어 그룹(같은 섹터+매출 비슷)으로 멀티플 계산.</p>
     <div class="card" style="background:rgba(124,92,255,0.08);border-color:rgba(124,92,255,0.3)">
       <h3>저평가 Top10 과 무엇이 다른가?</h3>
       <table>
@@ -624,8 +633,9 @@ function bindSyRowClicks(container) {
 async function renderSyDetail(root, params) {
   const q = params.q || "";
   root.innerHTML = `
-    <h1 class="page-title">📋 SY 평가법 상세 분석</h1>
-    <p class="page-sub">한 기업을 수익·자산·상대 3접근법으로 종합 평가.</p>
+    <h1 class="page-title">SY 평가법 가치평가<span class="muted">／ DETAILED ANALYSIS</span></h1>
+    ${metaStrip('§06·SY-DETAIL', '3 APPROACHES', 'PEER GROUP', 'PER SHARE FAIR PRICE')}
+    <p class="page-sub">한 기업을 수익·자산·상대 3접근법으로 종합 평가. 종합 기업가치 ÷ 발행주식수 = 주당 적정가.</p>
     <div class="card">
       <form id="syForm" style="display:flex;gap:8px;position:relative">
         <input id="syInp" type="text" value="${escapeHtml(q)}" placeholder="삼성전자, 엠로, 005930 …" autocomplete="off"
@@ -791,8 +801,9 @@ function renderSyDetailContent(d) {
 // ---------- 삼프로TV ----------
 async function renderSampro(root) {
   root.innerHTML = `
-    <h1 class="page-title">🎬 삼프로TV 최신 영상</h1>
-    <p class="page-sub">YouTube 채널 RSS feed 기반. 토픽 자동 분류 + 영상 요약. 30분 캐시.</p>
+    <h1 class="page-title">삼프로TV<span class="muted">／ 3PRO TV LATEST</span></h1>
+    ${metaStrip('§07·VIDEO', 'YOUTUBE RSS', 'AUTO TOPIC', '30MIN CACHE')}
+    <p class="page-sub">YouTube 채널 RSS feed 기반. 영상 토픽 자동 분류 (주식·거시·부동산·글로벌·기업분석·기술 등) + 요약 표시.</p>
     <div class="card">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="muted" onclick="document.querySelector('#sproView').dataset.view='all';loadSampro()" style="padding:6px 12px;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--line);border-radius:6px;cursor:pointer">전체 시간순</button>
@@ -858,8 +869,9 @@ function renderSproVideoList(videos) {
 // ---------- NEWS (topical) ----------
 async function renderNews(root) {
   root.innerHTML = `
-    <h1 class="page-title">📰 토픽 뉴스</h1>
-    <p class="page-sub">금융 · 부동산 · 정부정책 · 경제정책 · 청년정책 · 청약 / 반도체 · 2차전지 · AI · 바이오 · 자동차 · 조선/방산 · IT · 글로벌 / 가상자산 · 세제 · 노동 · 복지</p>
+    <h1 class="page-title">토픽 뉴스<span class="muted">／ 22 TOPICS</span></h1>
+    ${metaStrip('§08·NEWS', 'POLICY · FINANCE', 'INDUSTRY · TECH', 'BING NEWS RSS · 1H CACHE')}
+    <p class="page-sub">금융 · 부동산 · 정부/경제/청년/주택정책 · 청약 / 반도체 · 2차전지 · AI · 바이오 · 자동차 · 조선·방산 · IT · 글로벌 / 가상자산 · 세제 · 노동 · 복지.</p>
     <div id="topics" class="loading">불러오는 중…</div>
   `;
   try {
