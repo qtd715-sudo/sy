@@ -191,34 +191,52 @@ function attachAutocomplete(input, onSelect) {
   input.addEventListener("blur", () => setTimeout(close, 150));
 }
 
-function todayKST() {
-  // KST (UTC+9) 기준 오늘 날짜 — YYYY.MM.DD (요일)
-  const now = new Date();
-  const kstMs = now.getTime() + (9 * 60 - now.getTimezoneOffset()) * 60000;
-  const k = new Date(kstMs);
+// KST 변환은 UTC 밀리초에 +9h 더한 뒤 getUTC* 로 읽기만 하면 됨.
+// (이전 버전은 KST 브라우저에서 getTimezoneOffset 을 한 번 더 빼는 바람에 +18h 가 적용되는 버그가 있었음.)
+function _kst(dateOrTs) {
+  const d = dateOrTs instanceof Date ? dateOrTs
+    : (dateOrTs == null ? new Date() : new Date(typeof dateOrTs === "number" && dateOrTs < 1e12 ? dateOrTs * 1000 : dateOrTs));
+  if (isNaN(d)) return null;
+  return new Date(d.getTime() + 9 * 3600 * 1000);
+}
+function todayKST(dateOrTs) {
+  const k = _kst(dateOrTs);
+  if (!k) return "";
   const days = ["일", "월", "화", "수", "목", "금", "토"];
   return `${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} (${days[k.getUTCDay()]})`;
 }
-function nowKST() {
-  const now = new Date();
-  const kstMs = now.getTime() + (9 * 60 - now.getTimezoneOffset()) * 60000;
-  const k = new Date(kstMs);
+function nowKST(dateOrTs) {
+  const k = _kst(dateOrTs);
+  if (!k) return "";
   return `${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')} KST`;
 }
 function fmtDateKST(dateStr) {
   // RSS pubDate (예: "Thu, 07 May 2026 16:37:21 GMT") → "05.08 01:37 KST"
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  if (isNaN(d)) return dateStr;
-  const kstMs = d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000;
-  const k = new Date(kstMs);
+  const k = _kst(dateStr);
+  if (!k) return dateStr || "";
   return `${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')} KST`;
 }
 
+// 데이터 조회 시점 뱃지 (카드/섹션 하단용)
+function asOfLine(label, dateOrTs, extra) {
+  const k = _kst(dateOrTs);
+  const when = k ? `${todayKST(dateOrTs)} ${nowKST(dateOrTs)}` : "정적 샘플";
+  return `<div class="as-of">📅 <strong>${label}</strong> ${when}${extra ? ` · ${extra}` : ""}</div>`;
+}
+// 여러 timestamp(초 또는 ms) 중 가장 최신 시각
+function maxTimestamp(values) {
+  let max = 0;
+  for (const v of values) {
+    if (!v) continue;
+    const n = typeof v === "number" ? (v < 1e12 ? v * 1000 : v) : new Date(v).getTime();
+    if (!isNaN(n) && n > max) max = n;
+  }
+  return max || null;
+}
+
 function metaStrip(...parts) {
-  // 오늘 날짜 자동 추가 (모든 페이지)
-  const dateLabel = `${todayKST()} · ${nowKST()}`;
-  return `<div class="meta-strip">${[dateLabel, ...parts].map(p => `<span>${p}</span>`).join('<span class="dot">◆</span>')}</div>`;
+  // 페이지 메타 — 오늘 일자만(시각 X). 데이터 조회시점은 각 카드 하단에 별도 표기.
+  return `<div class="meta-strip"><span>${todayKST()}</span>${parts.length ? `<span class="dot">◆</span>${parts.map(p => `<span>${p}</span>`).join('<span class="dot">◆</span>')}` : ""}</div>`;
 }
 
 // ---------- DASHBOARD ----------
@@ -241,12 +259,16 @@ async function renderDashboard(root) {
   `;
 
   api("/api/commodities").then(groups => {
-    const html = Object.entries(groups).map(([name, list]) => `
-      <div class="card">
-        <h3>${escapeHtml(name)} <span class="muted">(${list.length})</span></h3>
-        ${renderQuoteTable(list)}
-      </div>
-    `).join("");
+    const html = Object.entries(groups).map(([name, list]) => {
+      const latest = maxTimestamp(list.map(q => q.timestamp));
+      return `
+        <div class="card">
+          <h3>${escapeHtml(name)} <span class="muted">(${list.length})</span></h3>
+          ${renderQuoteTable(list)}
+          ${asOfLine("시세", latest, "Yahoo Finance")}
+        </div>
+      `;
+    }).join("");
     $("#commodGroups").innerHTML = html || `<div class="card error">시세 데이터를 불러오지 못했습니다 (네트워크/방화벽). 인터넷 연결된 환경에서 자동 채워집니다.</div>`;
   }).catch(e => {
     $("#commodGroups").innerHTML = `<div class="card error">${e.message}</div>`;
@@ -254,7 +276,8 @@ async function renderDashboard(root) {
 
   api("/api/undervalued?n=5").then(list => {
     if (!list.length) { $("#under5").innerHTML = `<div class="muted">조건을 만족하는 종목 없음</div>`; return; }
-    $("#under5").innerHTML = renderScreenTable(list);
+    const priceTs = maxTimestamp(list.map(r => r.price_as_of));
+    $("#under5").innerHTML = renderScreenTable(list) + asOfLine("현재가", priceTs, "재무 DART 2025-12 결산 · 9모델 가중평균");
     bindRowClicks($("#under5"));
   }).catch(e => $("#under5").innerHTML = `<div class="error">${e.message}</div>`);
 
@@ -327,7 +350,8 @@ async function loadUnder() {
   try {
     const list = await api("/api/undervalued?n=10");
     if (!list.length) { $("#undertable").innerHTML = `<div class="muted">조건을 만족하는 종목 없음</div>`; return; }
-    $("#undertable").innerHTML = renderScreenTable(list);
+    const priceTs = maxTimestamp(list.map(r => r.price_as_of));
+    $("#undertable").innerHTML = renderScreenTable(list) + asOfLine("현재가", priceTs, "재무 DART 2025-12 결산 · 9모델 가중평균");
     bindRowClicks($("#undertable"));
   } catch (e) {
     $("#undertable").innerHTML = `<div class="error">${e.message}</div>`;
@@ -620,7 +644,8 @@ async function renderSyScreener(root) {
   try {
     const list = await api("/api/sy/undervalued?n=20");
     if (!list.length) { $("#sytable").innerHTML = `<div class="muted">조건을 만족하는 종목 없음</div>`; return; }
-    $("#sytable").innerHTML = renderSyScreenTable(list);
+    const priceTs = maxTimestamp(list.map(r => r.price_as_of));
+    $("#sytable").innerHTML = renderSyScreenTable(list) + asOfLine("현재가", priceTs, "재무 DART 2025-12 결산 · 자동 피어그룹 멀티플");
     bindSyRowClicks($("#sytable"));
   } catch (e) {
     $("#sytable").innerHTML = `<div class="error">${e.message}</div>`;
@@ -631,7 +656,7 @@ function renderSyScreenTable(list) {
   return `<table>
     <thead><tr>
       <th>종목</th><th>섹터</th><th>현재가</th>
-      <th>⭐ 주당 적정가</th><th>주당 상승여력</th>
+      <th>⭐ SY 주당적정가</th><th>주당 상승여력</th>
       <th>시총</th><th>종합 기업가치</th>
       <th>등급</th>
     </tr></thead>
@@ -662,7 +687,7 @@ async function renderSyDetail(root, params) {
   root.innerHTML = `
     <h1 class="page-title">SY 평가법 가치평가<span class="muted">／ DETAILED ANALYSIS</span></h1>
     ${metaStrip('§06·SY-DETAIL', '3 APPROACHES', 'PEER GROUP', 'PER SHARE FAIR PRICE')}
-    <p class="page-sub">한 기업을 수익·자산·상대 3접근법으로 종합 평가. 종합 기업가치 ÷ 발행주식수 = 주당 적정가.</p>
+    <p class="page-sub">한 기업을 수익·자산·상대 3접근법으로 종합 평가. 종합 기업가치 ÷ 발행주식수 = <strong>SY 주당적정가</strong> (03 가치평가의 9모델 가중평균 적정가와는 다른 산식).</p>
     <div class="card">
       <form id="syForm" style="display:flex;gap:8px;position:relative">
         <input id="syInp" type="text" value="${escapeHtml(q)}" placeholder="삼성전자, 엠로, 005930 …" autocomplete="off"
@@ -696,7 +721,7 @@ async function loadSyDetail(q) {
       `;
       return;
     }
-    out.innerHTML = renderSyDetailContent(d);
+    out.innerHTML = renderSyDetailContent(d) + asOfLine("현재가", d.price_as_of, "재무 DART 2025-12 결산 · 피어 멀티플 sample 고정");
   } catch (e) {
     out.innerHTML = `<div class="error">${e.message}</div>`;
   }
@@ -711,16 +736,16 @@ function renderSyDetailContent(d) {
     <div class="grid-4">
       <div class="kpi"><div class="label">종목</div><div class="value">${escapeHtml(d.name)}</div><div class="sub">${d.ticker} · ${escapeHtml(d.sector)}</div></div>
       <div class="kpi"><div class="label">현재가</div><div class="value">${fmt.krw(d.current_price)}</div><div class="sub">시총 ${bigKrwAuto(d.market_cap)}</div></div>
-      <div class="kpi"><div class="label">⭐ 주당 적정가 (mid)</div><div class="value" style="color:var(--accent)">${fmt.krw(d.fair_price_mid)}</div><div class="sub">${fmt.krw(d.fair_price_min)} ~ ${fmt.krw(d.fair_price_max)}</div></div>
+      <div class="kpi"><div class="label">⭐ SY 주당적정가 (mid)</div><div class="value" style="color:var(--accent)">${fmt.krw(d.fair_price_mid)}</div><div class="sub">${fmt.krw(d.fair_price_min)} ~ ${fmt.krw(d.fair_price_max)}</div></div>
       <div class="kpi"><div class="label">상승여력</div><div class="value ${d.upside_per_share>=0?'pos':'neg'}">${fmt.pct(d.upside_per_share)}</div><div class="sub"><span class="tag ${ratingCls}">${d.rating}</span></div></div>
     </div>
 
     <div class="card" style="background:rgba(79,209,197,0.06)">
-      <h3>⭐ 주당 적정가 = 종합 기업가치 ÷ 발행주식수</h3>
+      <h3>⭐ SY 주당적정가 = 종합 기업가치 ÷ 발행주식수</h3>
       <table>
         <tr class="no-hover"><td>종합 기업가치 (mid)</td><td><strong>${bigKrwAuto(d.enterprise_mid)}</strong></td></tr>
         <tr class="no-hover"><td>÷ 발행주식수</td><td>${fmt.num(d.shares_outstanding, 0)} 주</td></tr>
-        <tr class="no-hover" style="background:var(--bg-elev-2)"><td><strong>= 주당 적정가</strong></td><td><strong style="color:var(--accent)">${fmt.krw(d.fair_price_mid)}</strong></td></tr>
+        <tr class="no-hover" style="background:var(--bg-elev-2)"><td><strong>= SY 주당적정가</strong></td><td><strong style="color:var(--accent)">${fmt.krw(d.fair_price_mid)}</strong></td></tr>
         <tr class="no-hover"><td>현재가</td><td>${fmt.krw(d.current_price)}</td></tr>
         <tr class="no-hover"><td>주당 상승여력</td><td class="${d.upside_per_share>=0?'pos':'neg'}"><strong>${fmt.pct(d.upside_per_share)}</strong></td></tr>
       </table>

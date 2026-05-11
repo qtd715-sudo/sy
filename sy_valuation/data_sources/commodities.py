@@ -131,12 +131,27 @@ class CommodityConnector:
         return out
 
     def watchlist_groups(self) -> dict[str, list[CommodityQuote]]:
-        groups: dict[str, list[CommodityQuote]] = {}
+        """원자재/지수/환율 그룹별 병렬 fetch. ~40종목 × Yahoo 콜을 6 worker 로 동시 처리."""
+        import concurrent.futures
+        tasks = []  # (group, sym, name, ccy)
         for group, items in WATCHLIST_GROUPS.items():
-            qs: list[CommodityQuote] = []
             for sym, name, ccy in items:
-                q = self.fetch(sym, name, ccy)
+                tasks.append((group, sym, name, ccy))
+
+        def _fetch_one(t):
+            group, sym, name, ccy = t
+            try:
+                return group, self.fetch(sym, name, ccy)
+            except Exception:
+                return group, None
+
+        groups: dict[str, list[CommodityQuote]] = {g: [] for g in WATCHLIST_GROUPS}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            for group, q in ex.map(_fetch_one, tasks):
                 if q:
-                    qs.append(q)
-            groups[group] = qs
+                    groups[group].append(q)
+        # 그룹 내 원래 순서 유지
+        for group, items in WATCHLIST_GROUPS.items():
+            order = {sym: i for i, (sym, _, _) in enumerate(items)}
+            groups[group].sort(key=lambda q: order.get(q.symbol, 999))
         return groups

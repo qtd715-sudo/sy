@@ -241,6 +241,19 @@ main {
 }
 .meta-strip .dot { color: var(--text-mute); }
 
+/* 데이터 조회시점 뱃지 (카드/섹션 하단) */
+.as-of {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 10px;
+  padding: 6px 10px;
+  background: var(--bg-elev-2);
+  border-left: 2px solid var(--line-strong);
+  letter-spacing: 0.02em;
+}
+.as-of strong { color: var(--text); font-weight: 600; }
+
 /* === Cards === */
 .card {
   background: var(--bg-elev);

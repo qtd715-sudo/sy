@@ -146,7 +146,15 @@ class App:
             if f.ticker in prices:
                 f.current_price = prices[f.ticker]
         results = find_undervalued(financials, top_n=n, strict=strict)
-        return [r.to_dict() for r in results]
+        cache = get_cache()
+        rows = []
+        for r in results:
+            d = r.to_dict()
+            ticker = d.get("valuation", {}).get("ticker") or d.get("ticker")
+            cached = cache.get(f"price:{ticker}") if ticker else None
+            d["price_as_of"] = cached[1].get("fetched_at") if cached else None
+            rows.append(d)
+        return rows
 
     def sy_evaluate(self, query: str) -> dict[str, Any]:
         raw = self.repo.find(query)
@@ -205,37 +213,46 @@ class App:
             out["notes"] = (out.get("notes") or []) + [
                 "실시간 Naver 데이터 기반 — 자산/부채/EBITDA 등 일부 필드 부재로 수익가치/자산가치 부정확할 수 있음. 정확평가는 DART 키 필요."
             ]
+        cached = get_cache().get(f"price:{raw['ticker']}")
+        out["price_as_of"] = cached[1].get("fetched_at") if cached else None
         return out
 
     # SY 평가법 스크리너에서 제외할 종목 (지주사·통신사 등 자산가치/수익가치가 왜곡되는 케이스)
     SY_EXCLUDE_TICKERS = {"030200"}  # KT (자산-부채 비율 등으로 노이즈 큼)
 
     def sy_undervalued(self, n: int = 10) -> list[dict[str, Any]]:
+        """SY 평가법 저평가 스크리너.
+
+        ⚠ 라이브 가격은 **타겟 종목의 시총만** 갱신.
+        피어 멀티플(PER/PBR/PSR/EV-EBITDA) 산정에는 sample 데이터의 정적 가격 사용.
+        이유: 피어까지 라이브로 끌어올리면 멀티플이 부풀려져 적정가가 비현실적으로 커짐.
+        """
         out: list[dict[str, Any]] = []
         sectors = self.repo.sector_table()
-        universe = self.repo.all()
-        # 병렬 + 캐시로 가격 갱신 (16초 → 1~3초)
+        universe = self.repo.all()  # 원본 sample — 피어 멀티플 계산용 (변하지 않음)
         prices = self._refresh_prices([raw["ticker"] for raw in universe])
-        live_universe = []
-        for raw in universe:
-            raw = dict(raw)
-            if raw["ticker"] in prices:
-                raw["current_price"] = prices[raw["ticker"]]
-                if raw.get("shares_outstanding"):
-                    raw["market_cap"] = prices[raw["ticker"]] * raw["shares_outstanding"]
-            live_universe.append(raw)
 
-        for raw in live_universe:
+        cache = get_cache()
+        for raw in universe:
             if raw["ticker"] in self.SY_EXCLUDE_TICKERS:
                 continue
-            sector_mults = sectors.get(raw["sector"], {})
-            inp = build_inputs_from_raw(raw, sector_mults, universe=live_universe)
+            target = dict(raw)  # 타겟만 라이브 가격 주입
+            if target["ticker"] in prices:
+                target["current_price"] = prices[target["ticker"]]
+                if target.get("shares_outstanding"):
+                    target["market_cap"] = prices[target["ticker"]] * target["shares_outstanding"]
+            sector_mults = sectors.get(target["sector"], {})
+            inp = build_inputs_from_raw(target, sector_mults, universe=universe)
             r = evaluate_sy(inp)
             if r.market_cap <= 0 or r.enterprise_mid <= 0:
                 continue
             if r.upside_mid <= 0:
                 continue
-            out.append(r.to_dict())
+            row = r.to_dict()
+            # 가격 조회 시점 (cache fetched_at)
+            cached = cache.get(f"price:{target['ticker']}")
+            row["price_as_of"] = cached[1].get("fetched_at") if cached else None
+            out.append(row)
         out.sort(key=lambda x: x["upside_mid"], reverse=True)
         return out[:n]
 
@@ -306,8 +323,19 @@ class App:
         }
 
     def commodity_groups(self) -> dict[str, list[dict[str, Any]]]:
+        """캐시(`market:groups`) 우선 — 스케줄러가 5분마다 prefetch.
+        캐시 미스 시에만 라이브 fetch (병렬, 8 workers).
+        """
+        cache = get_cache()
+        cached = cache.get("market:groups")
+        if cached:
+            data, _meta = cached
+            return data  # already dict[str, list[dict]]
         groups = self.commodities.watchlist_groups()
-        return {g: [q.to_dict() for q in qs] for g, qs in groups.items()}
+        out = {g: [q.to_dict() for q in qs] for g, qs in groups.items()}
+        # 다음 호출용 즉시 캐시
+        cache.set("market:groups", out, ttl_sec=600, source="yahoo")
+        return out
 
     # 삼프로TV / YouTube
     def youtube_videos(self, channel: str = "삼프로TV", limit: int = 20) -> dict[str, Any]:
