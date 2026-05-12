@@ -2,9 +2,23 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>SY Valuation — 기업가치평가 시스템</title>
   <link rel="stylesheet" href="/style.css" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#fafaf9" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="SY" />
+  <link rel="apple-touch-icon" href="/icon-192.svg" />
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+
+  <!-- Open Graph (공유 시 미리보기) -->
+  <meta property="og:title" content="SY Valuation" />
+  <meta property="og:description" content="기업가치 평가 시스템 — 9 모델 + SY 평가법" />
+  <meta property="og:type" content="website" />
 </head>
 <body>
   <header class="top">
@@ -71,5 +85,13 @@
   </div>
 
   <script src="/app.js"></script>
+  <script>
+    // PWA: Service Worker 등록
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

@@ -33,6 +33,7 @@ from .data_sources import (
     LiveFinancials, NaverFundamentals, NaverFinancials, YoutubeChannel,
 )
 from .data_sources.cache import get_cache
+from .data_sources.analytics import get_analytics
 from .valuation.engine import value_company
 from .valuation.sy_method import evaluate_sy
 from .valuation.sy_builder import build_inputs_from_raw
@@ -392,6 +393,28 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
 
+    def log_request(self, code='-', size='-'):
+        # 모든 요청 로깅 (SQLite 분석)
+        try:
+            path = self.path.split("?")[0]
+            ua = self.headers.get("User-Agent", "")
+            ref = self.headers.get("Referer", "")
+            ip = self.headers.get("X-Forwarded-For", "")
+            if ip:
+                ip = ip.split(",")[0].strip()
+            else:
+                ip = self.client_address[0] if self.client_address else ""
+            get_analytics().log(
+                path=path, ip=ip, ua=ua, ref=ref,
+                status=int(code) if isinstance(code, int) else 200,
+            )
+        except Exception:
+            pass
+        # 기본 stderr 로그
+        sys.stderr.write("[%s] %s %s %s\n" % (
+            self.log_date_time_string(), self.requestline, str(code), str(size),
+        ))
+
     def _send_json(self, payload, status=200):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -401,6 +424,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _not_found(self):
+        self.send_response(404)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write("404 Not Found".encode("utf-8"))
+
+    def _client_ip(self) -> str:
+        # Render/Cloudflare 등 프록시 → X-Forwarded-For 가장 왼쪽
+        xff = self.headers.get("X-Forwarded-For") or ""
+        if xff: return xff.split(",")[0].strip()
+        return self.client_address[0] if self.client_address else ""
 
     def _send_file(self, path: Path):
         if not path.exists() or not path.is_file():
@@ -414,22 +449,28 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        # 정적 자산: 짧은 캐시 (브라우저 성능)
+        if path.suffix in (".css", ".js", ".png", ".jpg", ".svg", ".ico", ".webp"):
+            self.send_header("Cache-Control", "public, max-age=300")  # 5분
+        elif path.suffix == ".html":
+            self.send_header("Cache-Control", "no-cache")              # 항상 최신
         self.end_headers()
         self.wfile.write(body)
-
-    def _not_found(self):
-        self.send_response(404)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write("404 Not Found".encode("utf-8"))
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         params = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
         path = parsed.path
+        _t0 = time.time()
+        _status = 200
 
         try:
             app = get_app()
+            # 분석 API 분기
+            if path == "/api/admin/analytics/summary":
+                return self._send_json(get_analytics().summary(hours=int(params.get("hours", 24))))
+            if path == "/api/admin/analytics/recent":
+                return self._send_json(get_analytics().recent(limit=int(params.get("n", 100))))
             if path == "/api/health":
                 return self._send_json(app.health())
             if path == "/api/tickers":
