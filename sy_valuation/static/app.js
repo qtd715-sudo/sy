@@ -120,6 +120,7 @@ async function render() {
   if (path.startsWith("/sy-detail"))   { setActiveNav("sy-detail");   return renderSyDetail(root, params); }
   if (path.startsWith("/sampro"))      { setActiveNav("sampro");      return renderSampro(root); }
   if (path.startsWith("/news"))        { setActiveNav("news");        return renderNews(root); }
+  if (path.startsWith("/analytics"))   { setActiveNav("analytics");   return renderAnalytics(root); }
   root.innerHTML = `<div class="error">알 수 없는 페이지: ${path}</div>`;
 }
 
@@ -974,6 +975,196 @@ async function renderNews(root) {
   } catch (e) {
     $("#topics").innerHTML = `<div class="card error">${e.message}</div>`;
   }
+}
+
+// ---------- ANALYTICS ----------
+async function renderAnalytics(root) {
+  root.innerHTML = `
+    <h1 class="page-title">방문 분석<span class="muted">／ ANALYTICS</span></h1>
+    ${typeof metaStrip === 'function' ? metaStrip('§09·ANALYTICS', 'SELF-HOSTED SQLITE', 'PRIVATE LOG') : ''}
+    <p class="page-sub">자체 SQLite 로그 기반 — 모든 요청 자동 수집. 외부 분석 서비스 없음 (개인정보 본인 소유).</p>
+
+    <div class="card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="muted" style="font-family:var(--mono);font-size:11px;letter-spacing:0.05em">PERIOD:</span>
+      <button data-hr="1"   onclick="loadAnalytics(1)"   class="aprd-btn">1H</button>
+      <button data-hr="24"  onclick="loadAnalytics(24)"  class="aprd-btn active">24H</button>
+      <button data-hr="168" onclick="loadAnalytics(168)" class="aprd-btn">7D</button>
+      <button data-hr="720" onclick="loadAnalytics(720)" class="aprd-btn">30D</button>
+      <button data-hr="8760" onclick="loadAnalytics(8760)" class="aprd-btn">ALL</button>
+      <a href="#/analytics" onclick="loadAnalytics(24);return false" style="margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase">↻ Refresh</a>
+    </div>
+
+    <div id="anaKpis"></div>
+    <div id="anaCharts"></div>
+    <div id="anaRecent"></div>
+  `;
+  // 버튼 스타일 동적 추가
+  if (!document.getElementById('aprd-style')) {
+    const s = document.createElement('style');
+    s.id = 'aprd-style';
+    s.textContent = `
+      .aprd-btn { padding:6px 14px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-family:var(--mono); font-size:11px; letter-spacing:0.05em; cursor:pointer; }
+      .aprd-btn.active { background:var(--text); color:var(--bg); border-color:var(--text); }
+      .aprd-btn:hover { background:var(--bg-elev-2); }
+    `;
+    document.head.appendChild(s);
+  }
+  loadAnalytics(24);
+}
+window.loadAnalytics = loadAnalytics;
+
+async function loadAnalytics(hours) {
+  document.querySelectorAll('.aprd-btn').forEach(b => b.classList.toggle('active', String(b.dataset.hr) === String(hours)));
+  const kpiBox = $("#anaKpis");
+  const chartBox = $("#anaCharts");
+  const recentBox = $("#anaRecent");
+  if (kpiBox) kpiBox.innerHTML = `<div class="loading">불러오는 중…</div>`;
+  if (chartBox) chartBox.innerHTML = "";
+  if (recentBox) recentBox.innerHTML = "";
+
+  try {
+    const [s, recent] = await Promise.all([
+      api(`/api/admin/analytics/summary?hours=${hours}`),
+      api(`/api/admin/analytics/recent?n=100`),
+    ]);
+
+    // KPIs
+    kpiBox.innerHTML = `
+      <div class="grid-4">
+        <div class="kpi"><div class="label">총 방문 (${hours}h)</div><div class="value">${fmt.num(s.total, 0)}</div></div>
+        <div class="kpi"><div class="label">유니크 IP</div><div class="value">${fmt.num(s.unique_ips, 0)}</div></div>
+        <div class="kpi"><div class="label">유니크 페이지</div><div class="value">${fmt.num(s.unique_paths, 0)}</div></div>
+        <div class="kpi"><div class="label">평균 방문/IP</div><div class="value">${s.unique_ips ? (s.total/s.unique_ips).toFixed(1) : '-'}</div></div>
+      </div>
+    `;
+
+    // Charts
+    chartBox.innerHTML = `
+      <div class="grid-2">
+        <div class="card">
+          <h3>시간대별 방문 (KST)</h3>
+          ${renderHourlyChart(s.hourly_kst || [])}
+        </div>
+        <div class="card">
+          <h3>일별 방문 (최근 7일)</h3>
+          ${renderDailyChart(s.daily || [])}
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>인기 페이지 TOP 10</h3>
+          ${renderRankBars(s.top_paths || [], 'path')}
+        </div>
+        <div class="card">
+          <h3>방문자 TOP 10 (IP)</h3>
+          ${renderRankBars(s.top_ips || [], 'ip')}
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <h3>디바이스</h3>
+          ${renderPieList(s.devices || {})}
+        </div>
+        <div class="card">
+          <h3>운영체제</h3>
+          ${renderPieList(s.os || {})}
+        </div>
+        <div class="card">
+          <h3>브라우저</h3>
+          ${renderPieList(s.browsers || {})}
+        </div>
+      </div>
+    `;
+
+    // Recent log
+    recentBox.innerHTML = `
+      <div class="card">
+        <h3>최근 방문 (${recent.length}건)</h3>
+        <div style="max-height:500px;overflow-y:auto">
+          <table>
+            <thead><tr><th>시각</th><th>페이지</th><th>IP</th><th>디바이스</th><th>OS</th><th>브라우저</th><th>상태</th></tr></thead>
+            <tbody>${recent.map(r => `
+              <tr class="no-hover">
+                <td><code style="font-size:11px">${escapeHtml(r.ts)}</code></td>
+                <td><code style="font-size:11px">${escapeHtml(r.path)}</code></td>
+                <td><code style="font-size:11px">${escapeHtml(r.ip || '-')}</code></td>
+                <td>${escapeHtml(r.device || '-')}</td>
+                <td>${escapeHtml(r.os || '-')}</td>
+                <td>${escapeHtml(r.browser || '-')}</td>
+                <td class="${r.status >= 400 ? 'neg' : ''}">${r.status}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    kpiBox.innerHTML = `<div class="card error">${e.message}</div>`;
+  }
+}
+
+function renderHourlyChart(rows) {
+  if (!rows.length) return `<div class="muted">데이터 없음</div>`;
+  const map = new Map(rows.map(r => [r.hour, r.count]));
+  const max = Math.max(...rows.map(r => r.count), 1);
+  // 0~23시 전체 표시
+  let html = `<div style="display:flex;align-items:flex-end;gap:2px;height:140px;padding:8px 0;border-bottom:1px solid var(--line)">`;
+  for (let h = 0; h < 24; h++) {
+    const c = map.get(h) || 0;
+    const pct = (c / max * 100).toFixed(1);
+    html += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px" title="${h}시: ${c}">
+      <div style="width:100%;height:${pct}%;background:var(--text);min-height:${c?'2px':'0'}"></div>
+    </div>`;
+  }
+  html += `</div>`;
+  html += `<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:4px">
+    <span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>23시</span>
+  </div>`;
+  return html;
+}
+
+function renderDailyChart(rows) {
+  if (!rows.length) return `<div class="muted">데이터 없음</div>`;
+  const max = Math.max(...rows.map(r => r.count), 1);
+  return `<table>
+    <thead><tr><th>날짜</th><th>방문</th><th>유니크</th><th></th></tr></thead>
+    <tbody>${rows.map(r => `
+      <tr class="no-hover">
+        <td><code style="font-size:11px">${escapeHtml(r.date)}</code></td>
+        <td>${r.count}</td>
+        <td class="muted">${r.unique}</td>
+        <td style="width:50%"><div style="height:6px;background:var(--bg-elev-2);position:relative"><div style="height:100%;background:var(--text);width:${(r.count/max*100).toFixed(1)}%"></div></div></td>
+      </tr>`).join("")}
+    </tbody>
+  </table>`;
+}
+
+function renderRankBars(rows, keyField) {
+  if (!rows.length) return `<div class="muted">데이터 없음</div>`;
+  const max = Math.max(...rows.map(r => r.count), 1);
+  return `<table>
+    <tbody>${rows.map(r => `
+      <tr class="no-hover">
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><code style="font-size:11px">${escapeHtml(r[keyField])}</code></td>
+        <td style="width:60px;text-align:right">${r.count}</td>
+        <td style="width:50%"><div style="height:6px;background:var(--bg-elev-2)"><div style="height:100%;background:var(--text);width:${(r.count/max*100).toFixed(1)}%"></div></div></td>
+      </tr>`).join("")}
+    </tbody>
+  </table>`;
+}
+
+function renderPieList(obj) {
+  const entries = Object.entries(obj).sort(([,a],[,b]) => b-a);
+  if (!entries.length) return `<div class="muted">데이터 없음</div>`;
+  const total = entries.reduce((s, [, c]) => s + c, 0);
+  return entries.map(([k, c]) => `
+    <div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+      <div style="flex:1;font-size:12px">${escapeHtml(k)}</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);width:50px;text-align:right">${(c/total*100).toFixed(0)}%</div>
+      <div style="width:80px"><div style="height:6px;background:var(--bg-elev-2)"><div style="height:100%;background:var(--text);width:${(c/total*100).toFixed(1)}%"></div></div></div>
+      <div style="font-family:var(--mono);font-size:11px;width:30px;text-align:right">${c}</div>
+    </div>
+  `).join("");
 }
 
 function escapeHtml(s) {
