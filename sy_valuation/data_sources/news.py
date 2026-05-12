@@ -40,7 +40,9 @@ def _strip_html(s: str) -> str:
 class NewsConnector:
     NAVER_API = "https://openapi.naver.com/v1/search/news.json"
     GOOGLE_RSS = "https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
-    BING_RSS = "https://www.bing.com/news/search?q={q}&format=rss&setLang=ko"
+    # sortBy=date → 최신순 (기본 relevance 는 과거 기사 섞임)
+    # cc=KR → 한국 결과 우선
+    BING_RSS = "https://www.bing.com/news/search?q={q}&format=rss&setLang=ko&cc=KR&sortBy=date"
 
     def __init__(self, timeout: int = 4):
         self.timeout = timeout
@@ -59,7 +61,7 @@ class NewsConnector:
         return items[:limit]
 
     def _search_bing(self, query: str, limit: int) -> list[NewsItem]:
-        """Bing News RSS — 한국어 검색 결과, 글로벌 IP 에서 안정적."""
+        """Bing News RSS — sortBy=date 로 최신순. 7일 이내만 반환."""
         url = self.BING_RSS.format(q=urllib.parse.quote(query))
         data = fetch(url, timeout=self.timeout)
         if not data:
@@ -68,18 +70,30 @@ class NewsConnector:
             root = ET.fromstring(data)
         except ET.ParseError:
             return []
-        out: list[NewsItem] = []
+        from email.utils import parsedate_to_datetime
+        import time as _t
+        cutoff = _t.time() - 7 * 86400  # 7일 이내 뉴스만
+        items_with_ts: list[tuple[float, NewsItem]] = []
         for item in root.findall("./channel/item"):
-            out.append(NewsItem(
+            pub = item.findtext("pubDate") or ""
+            ts = 0.0
+            try:
+                if pub:
+                    ts = parsedate_to_datetime(pub).timestamp()
+            except Exception:
+                ts = 0.0
+            if ts and ts < cutoff:
+                continue  # 7일 이상 된 기사 제외
+            items_with_ts.append((ts, NewsItem(
                 title=_strip_html(item.findtext("title") or ""),
                 link=item.findtext("link") or "",
                 description=_strip_html(item.findtext("description") or ""),
-                published=item.findtext("pubDate") or "",
+                published=pub,
                 source="Bing News",
-            ))
-            if len(out) >= limit:
-                break
-        return out
+            )))
+        # 최신순 정렬
+        items_with_ts.sort(key=lambda x: x[0], reverse=True)
+        return [it for _, it in items_with_ts[:limit]]
 
     def _search_naver(self, query: str, limit: int) -> list[NewsItem]:
         url = f"{self.NAVER_API}?query={urllib.parse.quote(query)}&display={limit}&sort=date"
@@ -220,7 +234,7 @@ class NewsConnector:
                     pass
         return {t: out.get(t, []) for t in topics}
 
-    _CACHE_TTL = 3600  # 1시간 (SQLite 영속 캐시)
+    _CACHE_TTL = 1800  # 30분 (최신 뉴스 더 자주 갱신)
 
     def all_topics(
         self, per_topic: int = 4, parallel: int = 4, force_refresh: bool = False,

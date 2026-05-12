@@ -19,8 +19,10 @@
 """
 
 from __future__ import annotations
+import base64
 import json
 import mimetypes
+import os
 import sys
 import time
 import urllib.parse
@@ -431,6 +433,30 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write("404 Not Found".encode("utf-8"))
 
+    def _check_admin_auth(self) -> bool:
+        """ANALYTICS_USER + ANALYTICS_PASS 환경변수 등록 시 Basic Auth 강제.
+        둘 다 미등록이면 누구나 접근 가능 (현재 상태)."""
+        user = os.environ.get("ANALYTICS_USER", "")
+        pw = os.environ.get("ANALYTICS_PASS", "")
+        if not user or not pw:
+            return True
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Basic "):
+            return False
+        try:
+            decoded = base64.b64decode(auth[6:]).decode("utf-8", "ignore")
+            u, p = decoded.split(":", 1)
+            return u == user and p == pw
+        except Exception:
+            return False
+
+    def _send_unauthorized(self):
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="SY Analytics"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write("Authentication required".encode("utf-8"))
+
     def _client_ip(self) -> str:
         # Render/Cloudflare 등 프록시 → X-Forwarded-For 가장 왼쪽
         xff = self.headers.get("X-Forwarded-For") or ""
@@ -466,11 +492,14 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             app = get_app()
-            # 분석 API 분기
-            if path == "/api/admin/analytics/summary":
-                return self._send_json(get_analytics().summary(hours=int(params.get("hours", 24))))
-            if path == "/api/admin/analytics/recent":
-                return self._send_json(get_analytics().recent(limit=int(params.get("n", 100))))
+            # 분석 API — Basic Auth 보호
+            if path.startswith("/api/admin/"):
+                if not self._check_admin_auth():
+                    return self._send_unauthorized()
+                if path == "/api/admin/analytics/summary":
+                    return self._send_json(get_analytics().summary(hours=int(params.get("hours", 24))))
+                if path == "/api/admin/analytics/recent":
+                    return self._send_json(get_analytics().recent(limit=int(params.get("n", 100))))
             if path == "/api/health":
                 return self._send_json(app.health())
             if path == "/api/tickers":

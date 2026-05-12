@@ -42,7 +42,12 @@ const fmt = {
 };
 
 async function api(path) {
-  const res = await fetch(path);
+  // /api/admin/* 는 credentials 포함 (Basic Auth — 브라우저가 자동 prompt)
+  const opts = path.startsWith("/api/admin/")
+    ? { credentials: "include" }
+    : {};
+  const res = await fetch(path, opts);
+  if (res.status === 401) throw new Error("인증이 필요합니다. 새로고침해서 비밀번호 입력하세요.");
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
