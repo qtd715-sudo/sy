@@ -985,9 +985,9 @@ async function renderNews(root) {
 // ---------- ANALYTICS ----------
 async function renderAnalytics(root) {
   root.innerHTML = `
-    <h1 class="page-title">방문 분석<span class="muted">／ ANALYTICS</span></h1>
-    ${typeof metaStrip === 'function' ? metaStrip('§09·ANALYTICS', 'SELF-HOSTED SQLITE', 'PRIVATE LOG') : ''}
-    <p class="page-sub">자체 SQLite 로그 기반 — 모든 요청 자동 수집. 외부 분석 서비스 없음 (개인정보 본인 소유).</p>
+    <h1 class="page-title">Admin Console<span class="muted">／ OPERATIONS</span></h1>
+    ${typeof metaStrip === 'function' ? metaStrip('OWNER ONLY', 'PRIVATE', 'INTERNAL') : ''}
+    <p class="page-sub">운영자 전용 화면 (인증 필요).</p>
 
     <div class="card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <span class="muted" style="font-family:var(--mono);font-size:11px;letter-spacing:0.05em">PERIOD:</span>
@@ -1036,10 +1036,10 @@ async function loadAnalytics(hours) {
     // KPIs
     kpiBox.innerHTML = `
       <div class="grid-4">
-        <div class="kpi"><div class="label">총 방문 (${hours}h)</div><div class="value">${fmt.num(s.total, 0)}</div></div>
-        <div class="kpi"><div class="label">유니크 IP</div><div class="value">${fmt.num(s.unique_ips, 0)}</div></div>
-        <div class="kpi"><div class="label">유니크 페이지</div><div class="value">${fmt.num(s.unique_paths, 0)}</div></div>
-        <div class="kpi"><div class="label">평균 방문/IP</div><div class="value">${s.unique_ips ? (s.total/s.unique_ips).toFixed(1) : '-'}</div></div>
+        <div class="kpi"><div class="label">Total requests (${hours}h)</div><div class="value">${fmt.num(s.total, 0)}</div></div>
+        <div class="kpi"><div class="label">Unique IPs</div><div class="value">${fmt.num(s.unique_ips, 0)}</div></div>
+        <div class="kpi"><div class="label">Unique paths</div><div class="value">${fmt.num(s.unique_paths, 0)}</div></div>
+        <div class="kpi"><div class="label">Req per IP</div><div class="value">${s.unique_ips ? (s.total/s.unique_ips).toFixed(1) : '-'}</div></div>
       </div>
     `;
 
@@ -1047,21 +1047,21 @@ async function loadAnalytics(hours) {
     chartBox.innerHTML = `
       <div class="grid-2">
         <div class="card">
-          <h3>시간대별 방문 (KST)</h3>
+          <h3>Hourly traffic (KST)</h3>
           ${renderHourlyChart(s.hourly_kst || [])}
         </div>
         <div class="card">
-          <h3>일별 방문 (최근 7일)</h3>
+          <h3>Daily traffic (last 7d)</h3>
           ${renderDailyChart(s.daily || [])}
         </div>
       </div>
       <div class="grid-2">
         <div class="card">
-          <h3>인기 페이지 TOP 10</h3>
+          <h3>Top paths</h3>
           ${renderRankBars(s.top_paths || [], 'path')}
         </div>
         <div class="card">
-          <h3>방문자 TOP 10 (IP)</h3>
+          <h3>Top IPs</h3>
           ${renderRankBars(s.top_ips || [], 'ip')}
         </div>
       </div>
@@ -1084,7 +1084,7 @@ async function loadAnalytics(hours) {
     // Recent log
     recentBox.innerHTML = `
       <div class="card">
-        <h3>최근 방문 (${recent.length}건)</h3>
+        <h3>Recent requests (${recent.length})</h3>
         <div style="max-height:500px;overflow-y:auto">
           <table>
             <thead><tr><th>시각</th><th>페이지</th><th>IP</th><th>디바이스</th><th>OS</th><th>브라우저</th><th>상태</th></tr></thead>
@@ -1132,7 +1132,7 @@ function renderDailyChart(rows) {
   if (!rows.length) return `<div class="muted">데이터 없음</div>`;
   const max = Math.max(...rows.map(r => r.count), 1);
   return `<table>
-    <thead><tr><th>날짜</th><th>방문</th><th>유니크</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Req</th><th>Unique</th><th></th></tr></thead>
     <tbody>${rows.map(r => `
       <tr class="no-hover">
         <td><code style="font-size:11px">${escapeHtml(r.date)}</code></td>
