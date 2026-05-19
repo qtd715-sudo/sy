@@ -76,7 +76,29 @@ window.addEventListener("hashchange", render);
 window.addEventListener("DOMContentLoaded", () => {
   initHeader();
   render();
+  // 첫 페이지가 그려진 뒤 idle 시간에 다른 탭 데이터 prefetch — SW 캐시까지 들어가서
+  // 사용자가 어떤 메뉴를 눌러도 즉시 화면이 뜸. 실패해도 무시.
+  schedulePrefetch();
 });
+
+function schedulePrefetch() {
+  const urls = [
+    "/api/commodities",
+    "/api/undervalued?n=10",
+    "/api/sy/undervalued?n=10",
+    "/api/news/market?n=4",
+    "/api/news/topics?n=4",
+    "/api/youtube/grouped",
+  ];
+  const run = () => urls.forEach(u => {
+    fetch(u, { credentials: "same-origin" }).catch(() => {});
+  });
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(run, { timeout: 3000 });
+  } else {
+    setTimeout(run, 1500);
+  }
+}
 
 function initHeader() {
   const inp = $("#globalSearch");

@@ -475,11 +475,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        # 정적 자산: 짧은 캐시 (브라우저 성능)
-        if path.suffix in (".css", ".js", ".png", ".jpg", ".svg", ".ico", ".webp"):
-            self.send_header("Cache-Control", "public, max-age=300")  # 5분
+        # sw.js: 항상 최신 (브라우저 SW 업데이트 보장)
+        if path.name == "sw.js":
+            self.send_header("Cache-Control", "no-cache")
+        # 이미지/아이콘: 길게 캐시 (거의 변하지 않음)
+        elif path.suffix in (".png", ".jpg", ".svg", ".ico", ".webp"):
+            self.send_header("Cache-Control", "public, max-age=604800")  # 7일
+        # JS/CSS: 1일 + must-revalidate. SW 가 어차피 가져가지만 첫 진입/SW 미등록 환경 대비
+        elif path.suffix in (".css", ".js"):
+            self.send_header("Cache-Control", "public, max-age=86400, must-revalidate")  # 1일
         elif path.suffix == ".html":
             self.send_header("Cache-Control", "no-cache")              # 항상 최신
+        elif path.suffix == ".json":
+            self.send_header("Cache-Control", "public, max-age=3600")   # manifest 등
         self.end_headers()
         self.wfile.write(body)
 
