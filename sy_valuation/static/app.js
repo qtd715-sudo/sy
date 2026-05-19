@@ -41,15 +41,40 @@ const fmt = {
   },
 };
 
-async function api(path) {
-  // /api/admin/* 는 credentials 포함 (Basic Auth — 브라우저가 자동 prompt)
-  const opts = path.startsWith("/api/admin/")
-    ? { credentials: "include" }
-    : {};
-  const res = await fetch(path, opts);
-  if (res.status === 401) throw new Error("인증이 필요합니다. 새로고침해서 비밀번호 입력하세요.");
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+// 기본 타임아웃 5초. 외부 API 의존(평가/추천 등) 호출은 명시적으로 더 길게.
+// 5초 안에 응답 없으면 AbortError → 친화적 메시지로 throw.
+// 단, SW 캐시(SWR)가 있으면 거의 즉시 반환되므로 첫 콜드 방문에서만 발생.
+async function api(path, opts = {}) {
+  const timeoutMs = opts.timeout ?? 5000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const fetchOpts = {
+    signal: controller.signal,
+    ...(path.startsWith("/api/admin/") ? { credentials: "include" } : {}),
+  };
+  try {
+    const res = await fetch(path, fetchOpts);
+    if (res.status === 401) throw new Error("인증이 필요합니다. 새로고침해서 비밀번호 입력하세요.");
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
+  } catch (e) {
+    if (e.name === "AbortError") {
+      // 캐시에서라도 가져오기 시도 (SW가 가로채서 stale 응답 반환 가능)
+      try {
+        const r = await fetch(path, { cache: "force-cache" });
+        if (r.ok) {
+          const data = await r.json();
+          data.__stale = true;
+          return data;
+        }
+      } catch {}
+      const sec = Math.round(timeoutMs / 1000);
+      throw new Error(`응답이 ${sec}초를 넘었습니다. 백그라운드 갱신 중 — 잠시 후 새로고침해주세요.`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ---------- Routing ----------
@@ -446,7 +471,7 @@ async function loadSearch(q) {
   const out = $("#searchResult");
   out.innerHTML = `<div class="loading">평가 중…</div>`;
   try {
-    const data = await api(`/api/valuation?q=${encodeURIComponent(q)}`);
+    const data = await api(`/api/valuation?q=${encodeURIComponent(q)}`, { timeout: 15000 });
     if (data.error) {
       const sug = (data.suggestions || []).map(s => `
         <a href="#/search?q=${encodeURIComponent(s.ticker)}" class="suggest-pill">
@@ -579,7 +604,7 @@ async function loadRecommend(q) {
   const out = $("#recResult");
   out.innerHTML = `<div class="loading">분석 중… (가치평가 + 뉴스 감성 + 변동성)</div>`;
   try {
-    const d = await api(`/api/recommend?q=${encodeURIComponent(q)}`);
+    const d = await api(`/api/recommend?q=${encodeURIComponent(q)}`, { timeout: 15000 });
     if (d.error) {
       const sug = (d.suggestions || []).map(s => `<a href="#/recommend?q=${encodeURIComponent(s.ticker)}" class="suggest-pill">${escapeHtml(s.name)} <span class="muted">${s.ticker}</span></a>`).join(" ");
       out.innerHTML = `<div class="card error">${escapeHtml(d.error)}</div>${sug?`<div class="card">${sug}</div>`:""}`;
@@ -739,7 +764,7 @@ async function loadSyDetail(q) {
   const out = $("#syResult");
   out.innerHTML = `<div class="loading">SY 평가법으로 분석 중…</div>`;
   try {
-    const d = await api(`/api/sy/evaluate?q=${encodeURIComponent(q)}`);
+    const d = await api(`/api/sy/evaluate?q=${encodeURIComponent(q)}`, { timeout: 15000 });
     if (d.error) {
       const sug = (d.suggestions || []).map(s => `<a href="#/sy-detail?q=${encodeURIComponent(s.ticker)}" class="suggest-pill">${escapeHtml(s.name)} <span class="muted">${s.ticker}</span></a>`).join(" ");
       out.innerHTML = `
