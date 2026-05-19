@@ -50,17 +50,18 @@ jobs:
           echo "Manual mode: ${{ github.event.inputs.mode }}"
 
       - name: Health ping (always)
+        # /api/ping (초경량) 으로 깨우고, 성공 시 /api/health 로 상세 상태도 확인.
         run: |
           set +e
           for i in 1 2 3; do
-            code=$(curl -sS -o /tmp/health.json -m 30 -w "%{http_code}" "${{ vars.SY_URL }}/api/health")
-            echo "attempt $i: HTTP $code"
-            if [ "$code" = "200" ]; then
-              cat /tmp/health.json | head -c 1000
-              break
-            fi
+            code=$(curl -sS -o /dev/null -m 30 -w "%{http_code}" "${{ vars.SY_URL }}/api/ping")
+            echo "ping attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then break; fi
             sleep 10
           done
+          # 깨운 뒤 상세 상태도 로깅 (실패해도 무시)
+          curl -sS -m 30 "${{ vars.SY_URL }}/api/health" | head -c 1000
+          echo ""
 
       - name: Warmup hot endpoints (always)
         # /api/health 만 깨우면 다른 페이지 첫 진입 시 5-15초 추가 지연.

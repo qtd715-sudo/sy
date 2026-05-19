@@ -508,6 +508,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json(get_analytics().summary(hours=int(params.get("hours", 24))))
                 if path == "/api/admin/analytics/recent":
                     return self._send_json(get_analytics().recent(limit=int(params.get("n", 100))))
+            if path == "/api/ping":
+                # 초경량 헬스체크 — Render/UptimeRobot 등 외부 모니터링용.
+                # 모듈 import 외엔 아무것도 안 함 → 콜드 스타트 직후에도 ~10ms.
+                # /api/health 는 시스템 상태 상세까지 계산해서 무거움.
+                return self._send_json({"ok": True})
             if path == "/api/health":
                 return self._send_json(app.health())
             if path == "/api/tickers":
