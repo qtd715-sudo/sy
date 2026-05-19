@@ -113,7 +113,7 @@ function schedulePrefetch() {
     "/api/sy/undervalued?n=10",
     "/api/news/market?n=4",
     "/api/news/topics?n=4",
-    "/api/youtube/grouped",
+    "/api/market-news?n=10",
   ];
   const run = () => urls.forEach(u => {
     fetch(u, { credentials: "same-origin" }).catch(() => {});
@@ -170,7 +170,6 @@ async function render() {
   if (path.startsWith("/recommend"))   { setActiveNav("recommend");   return renderRecommend(root, params); }
   if (path.startsWith("/sy-screener")) { setActiveNav("sy-screener"); return renderSyScreener(root); }
   if (path.startsWith("/sy-detail"))   { setActiveNav("sy-detail");   return renderSyDetail(root, params); }
-  if (path.startsWith("/sampro"))      { setActiveNav("sampro");      return renderSampro(root); }
   if (path.startsWith("/news"))        { setActiveNav("news");        return renderNews(root); }
   if (path.startsWith("/analytics"))   { setActiveNav("analytics");   return renderAnalytics(root); }
   root.innerHTML = `<div class="error">알 수 없는 페이지: ${path}</div>`;
@@ -334,8 +333,8 @@ async function renderDashboard(root) {
     bindRowClicks($("#under5"));
   }).catch(e => $("#under5").innerHTML = `<div class="error">${e.message}</div>`);
 
-  // 시장 종합 뉴스 (12개 토픽). 백그라운드 force refresh 한 번 — 화면은 캐시로 즉시 표시
-  fetch("/api/news/topics?force=1&n=4").catch(()=>{});  // fire-and-forget
+  // 시장 종합 뉴스 (12개 토픽). keepalive 워크플로우가 주기적으로 갱신하므로
+  // 첫 사용자가 force refresh 트리거하지 않음 (콜드 시 외부 API 폭주 방지).
   api("/api/news/market?n=4").then(data => {
     const html = Object.entries(data).map(([topic, items]) => `
       <div class="card">
@@ -901,110 +900,6 @@ function renderSyDetailContent(d) {
       </table>
     </div>
   `;
-}
-
-// ---------- 삼프로TV ----------
-async function renderSampro(root) {
-  root.innerHTML = `
-    <h1 class="page-title">삼프로TV<span class="muted">／ 3PRO TV LATEST</span></h1>
-    ${metaStrip('§07·VIDEO', 'YOUTUBE RSS', 'AUTO TOPIC', '30MIN CACHE')}
-    <p class="page-sub">YouTube 채널 RSS feed 기반. 영상 토픽 자동 분류 + 최신 영상 핵심 내용 요약.</p>
-
-    <div id="sproLatest" class="loading">최신 영상 불러오는 중…</div>
-
-    <div class="card">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button onclick="document.querySelector('#sproView').dataset.view='all';loadSampro()" style="padding:8px 14px;background:var(--bg);color:var(--text);border:1px solid var(--line);font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer">전체 시간순</button>
-        <button onclick="document.querySelector('#sproView').dataset.view='topic';loadSampro()" style="padding:8px 14px;background:var(--bg);color:var(--text);border:1px solid var(--line);font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer">토픽별</button>
-        <a href="https://www.youtube.com/@3protv" target="_blank" style="margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase">→ 채널 페이지</a>
-      </div>
-    </div>
-    <div id="sproView" data-view="all"></div>
-  `;
-  loadSampro();
-  loadSamproLatest();
-}
-
-async function loadSamproLatest() {
-  const out = $("#sproLatest");
-  if (!out) return;
-  try {
-    const v = await api("/api/youtube/latest");
-    if (v.error) {
-      out.innerHTML = "";
-      return;
-    }
-    const date = v.published ? new Date(v.published).toLocaleString("ko-KR", {year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
-    const summary = v.summary || v.description || "";
-    out.innerHTML = `
-      <div class="card" style="border-left:3px solid var(--text)">
-        <h3>★ 최신 영상 요약 <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text-mute)">${escapeHtml(date)}</span></h3>
-        <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
-          ${v.thumbnail ? `<a href="${v.link}" target="_blank" style="border-bottom:none;flex-shrink:0"><img src="${v.thumbnail}" alt="" style="width:280px;max-width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--bg-elev-2)" loading="lazy"></a>` : ""}
-          <div style="flex:1;min-width:240px">
-            ${v.topic && v.topic !== "기타" ? `<div style="font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">[ ${escapeHtml(v.topic)} ]</div>` : ""}
-            <h2 style="font-size:20px;font-weight:700;letter-spacing:-0.02em;margin:0 0 12px;line-height:1.3">
-              <a href="${v.link}" target="_blank" style="border-bottom:none;color:var(--text)">${escapeHtml(v.title)}</a>
-            </h2>
-            <div style="font-size:13px;line-height:1.65;color:var(--text-dim);white-space:pre-wrap">${escapeHtml(summary)}</div>
-            <a href="${v.link}" target="_blank" style="display:inline-block;margin-top:14px;padding:8px 16px;background:var(--text);color:var(--bg);border-bottom:none;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase">▶ Watch on YouTube</a>
-          </div>
-        </div>
-      </div>
-    `;
-  } catch (e) {
-    out.innerHTML = "";
-  }
-}
-
-window.loadSampro = loadSampro;
-async function loadSampro() {
-  const out = $("#sproView");
-  if (!out) return;
-  const view = out.dataset.view || "all";
-  out.innerHTML = `<div class="loading">불러오는 중…</div>`;
-  try {
-    if (view === "topic") {
-      const data = await api(`/api/youtube/grouped?channel=${encodeURIComponent("삼프로TV")}`);
-      const html = Object.entries(data).map(([topic, vids]) => `
-        <div class="card">
-          <h3>${escapeHtml(topic)} <span class="muted" style="font-weight:400">(${vids.length})</span></h3>
-          ${renderSproVideoList(vids)}
-        </div>
-      `).join("");
-      out.innerHTML = html || `<div class="card error">영상을 불러오지 못했습니다.</div>`;
-    } else {
-      const data = await api(`/api/youtube?n=20`);
-      const vids = data.videos || [];
-      out.innerHTML = `
-        <div class="card">
-          <h3>${escapeHtml(data.channel || "삼프로TV")} 최신 ${vids.length}개</h3>
-          ${renderSproVideoList(vids)}
-        </div>
-      `;
-    }
-  } catch (e) {
-    out.innerHTML = `<div class="card error">${e.message}</div>`;
-  }
-}
-
-function renderSproVideoList(videos) {
-  if (!videos || !videos.length) return `<div class="muted">영상 없음</div>`;
-  return `<ul class="news-list">${videos.map(v => {
-    const date = v.published ? new Date(v.published).toLocaleString("ko-KR", {year:"2-digit",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
-    const topicTag = v.topic && v.topic !== "기타"
-      ? `<span class="tag" style="background:rgba(124,92,255,0.15);color:var(--accent-2);margin-right:6px">${escapeHtml(v.topic)}</span>` : "";
-    return `<li style="display:flex;gap:12px;align-items:flex-start">
-      ${v.thumbnail ? `<img src="${v.thumbnail}" alt="" style="width:120px;height:67px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--bg-elev-2)" loading="lazy">` : ""}
-      <div style="flex:1;min-width:0">
-        <div class="title" style="margin-bottom:4px">
-          ${topicTag}<a href="${v.link}" target="_blank" rel="noopener">${escapeHtml(v.title)}</a>
-        </div>
-        ${v.summary ? `<div class="muted" style="font-size:12px;line-height:1.4;margin-bottom:4px">${escapeHtml(v.summary)}</div>` : ""}
-        <div class="meta">${escapeHtml(date)}</div>
-      </div>
-    </li>`;
-  }).join("")}</ul>`;
 }
 
 // ---------- NEWS (topical) ----------

@@ -8,8 +8,8 @@
 //      → 단, 캐시가 너무 오래되면(>5분) 캐시 무시하고 네트워크 우선 (실시간성 보장)
 //  - /api/admin/*, /api/prefetch 는 캐시하지 않음 (인증/사이드이펙트)
 //
-// 캐시 키 'sy-v5' — 이전 버전 캐시는 activate 시 모두 삭제됨.
-const CACHE = 'sy-v5';
+// 캐시 키 'sy-v6' — 이전 버전 캐시는 activate 시 모두 삭제됨.
+const CACHE = 'sy-v6';
 const API_FRESH_MS = 5 * 60 * 1000; // 5분 이상 묵으면 캐시 무시
 
 const PRECACHE = [
@@ -31,7 +31,7 @@ const WARMUP_APIS = [
   '/api/news/market?n=4',
   '/api/news/topics?n=4',
   '/api/sy/undervalued?n=10',
-  '/api/youtube/grouped',
+  '/api/market-news?n=10',
 ];
 
 self.addEventListener('install', e => {

@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 import base64
+import gzip
 import json
 import mimetypes
 import os
@@ -32,7 +33,7 @@ from typing import Any
 
 from .data_sources import (
     FinancialsRepository, NewsConnector, CommodityConnector, PriceConnector, DartConnector,
-    LiveFinancials, NaverFundamentals, NaverFinancials, YoutubeChannel,
+    LiveFinancials, NaverFundamentals, NaverFinancials,
 )
 from .data_sources.cache import get_cache
 from .data_sources.analytics import get_analytics
@@ -57,7 +58,6 @@ class App:
         self.live = LiveFinancials()
         self.naver = NaverFundamentals()
         self.naver_fin = NaverFinancials()
-        self.youtube = YoutubeChannel()
         self.scheduler = Scheduler(self)
 
     # ---------- API handlers ----------
@@ -340,18 +340,6 @@ class App:
         cache.set("market:groups", out, ttl_sec=600, source="yahoo")
         return out
 
-    # 삼프로TV / YouTube
-    def youtube_videos(self, channel: str = "삼프로TV", limit: int = 20) -> dict[str, Any]:
-        videos = self.youtube.list_videos(channel, limit=limit)
-        return {"channel": channel, "videos": videos, "count": len(videos)}
-
-    def youtube_grouped(self, channel: str = "삼프로TV") -> dict[str, list[dict[str, Any]]]:
-        return self.youtube.grouped_by_topic(channel)
-
-    def youtube_latest(self, channel: str = "삼프로TV") -> dict[str, Any]:
-        v = self.youtube.latest_with_summary(channel)
-        return v or {"error": "최신 영상을 가져오지 못했습니다."}
-
     # Naver 연간 재무제표
     def financials_annual(self, code: str) -> dict[str, Any]:
         d = self.naver_fin.fetch(code, period="annual")
@@ -417,13 +405,48 @@ class Handler(BaseHTTPRequestHandler):
             self.log_date_time_string(), self.requestline, str(code), str(size),
         ))
 
+    # 응답 캐시 친화 정책: 캐시 안전한 GET 엔드포인트는 짧은 max-age + stale-while-revalidate.
+    # SW SWR 와 결합해 브라우저 HTTP 캐시까지 활용 → 같은 응답 재요청은 네트워크 안 탐.
+    # 사용자별 인증/사이드이펙트 엔드포인트는 'no-store' (admin/prefetch).
+    _CACHE_PUBLIC = {
+        "/api/ping":           "public, max-age=30",
+        "/api/health":         "public, max-age=30",
+        "/api/tickers":        "public, max-age=3600, stale-while-revalidate=86400",
+        "/api/commodities":    "public, max-age=120, stale-while-revalidate=600",
+        "/api/commodities/flat": "public, max-age=120, stale-while-revalidate=600",
+        "/api/undervalued":    "public, max-age=300, stale-while-revalidate=1800",
+        "/api/sy/undervalued": "public, max-age=300, stale-while-revalidate=1800",
+        "/api/news/topics":    "public, max-age=600, stale-while-revalidate=3600",
+        "/api/news/market":    "public, max-age=600, stale-while-revalidate=3600",
+        "/api/market-news":    "public, max-age=600, stale-while-revalidate=3600",
+        "/api/news/topic":     "public, max-age=600, stale-while-revalidate=3600",
+        "/api/news":           "public, max-age=300, stale-while-revalidate=1800",
+        "/api/search":         "public, max-age=300",
+    }
+
     def _send_json(self, payload, status=200):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        # gzip 압축: Accept-Encoding 에 gzip 있을 때만, body 1KB 이상에만.
+        # 한국↔Singapore 네트워크 latency 큰 환경에서 전송 시간 60~80% 감소.
+        encoding = None
+        accept = (self.headers.get("Accept-Encoding") or "").lower()
+        if "gzip" in accept and len(body) >= 1024:
+            body = gzip.compress(body, compresslevel=6)
+            encoding = "gzip"
+
+        # 캐시 정책 결정
+        path = urllib.parse.urlparse(self.path).path
+        cc = self._CACHE_PUBLIC.get(path, "no-store")
+
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cc)
+        # 같은 path 라도 Accept-Encoding 따라 응답이 다르므로 캐시 키에 포함
+        self.send_header("Vary", "Accept-Encoding")
+        if encoding:
+            self.send_header("Content-Encoding", encoding)
         self.end_headers()
         self.wfile.write(body)
 
@@ -472,9 +495,26 @@ class Handler(BaseHTTPRequestHandler):
         if ctype.startswith("text/") or ctype.endswith("javascript") or ctype.endswith("json"):
             ctype += "; charset=utf-8"
         body = path.read_bytes()
+
+        # 텍스트 자산 gzip 압축 (이미지/svg 는 효과 적거나 역효과 → skip)
+        encoding = None
+        accept = (self.headers.get("Accept-Encoding") or "").lower()
+        is_text = (
+            ctype.startswith("text/")
+            or "javascript" in ctype
+            or "json" in ctype
+            or path.suffix == ".svg"   # SVG 는 text/xml. 큰 svg 면 효과 있음
+        )
+        if "gzip" in accept and is_text and len(body) >= 1024:
+            body = gzip.compress(body, compresslevel=6)
+            encoding = "gzip"
+
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Vary", "Accept-Encoding")
+        if encoding:
+            self.send_header("Content-Encoding", encoding)
         # sw.js: 항상 최신 (브라우저 SW 업데이트 보장)
         if path.name == "sw.js":
             self.send_header("Cache-Control", "no-cache")
@@ -568,15 +608,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(app.news_topic(params.get("topic", "코스피"), n=int(params.get("n", 10))))
             if path == "/api/commodities":
                 return self._send_json(app.commodity_groups())
-            if path == "/api/youtube":
-                return self._send_json(app.youtube_videos(
-                    channel=params.get("channel", "삼프로TV"),
-                    limit=int(params.get("n", 20)),
-                ))
-            if path == "/api/youtube/grouped":
-                return self._send_json(app.youtube_grouped(channel=params.get("channel", "삼프로TV")))
-            if path == "/api/youtube/latest":
-                return self._send_json(app.youtube_latest(channel=params.get("channel", "삼프로TV")))
             if path == "/api/financials/annual":
                 return self._send_json(app.financials_annual(params.get("q", "")))
             if path == "/api/financials/quarter":

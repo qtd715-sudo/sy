@@ -11,7 +11,6 @@ from .dart import DartConnector
 from .live import LiveFinancials
 from .naver_fundamentals import NaverFundamentals
 from .naver_financials import NaverFinancials
-from .youtube import YoutubeChannel
 
 __all__ = [
     "FinancialsRepository",
@@ -22,5 +21,4 @@ __all__ = [
     "LiveFinancials",
     "NaverFundamentals",
     "NaverFinancials",
-    "YoutubeChannel",
 ]
