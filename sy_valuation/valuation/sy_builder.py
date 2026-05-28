@@ -10,17 +10,24 @@
 from __future__ import annotations
 from typing import Any
 
-from .sy_method import SyInputs
+from .sy_method import (
+    SyInputs, calculate_wacc, calculate_growth_rate,
+    CAPM_RF, CAPM_BETA_DEFAULT, CAPM_MRP, CORPORATE_TAX_RATE,
+)
 from .peers import select_peers, compute_peer_multiples, peer_summary
 
 
-# 섹터별 표준 WACC (KOSPI 평균 기반 추정. 자본구조 우호 기업은 별도 입력 가능)
-SECTOR_WACC = {
-    "반도체": 0.085, "IT서비스": 0.090, "자동차": 0.095, "2차전지": 0.100,
-    "바이오": 0.110, "은행": 0.075, "통신": 0.070, "유통": 0.085,
-    "철강": 0.085, "조선": 0.095, "에너지": 0.090, "엔터": 0.105,
-    "기술": 0.090, "가상자산": 0.150,
+# 섹터별 베타 (DART 미수집 시 폴백 값. Yahoo β 받아오면 그것 우선).
+# KOSPI 5년 회귀 기반 추정.
+SECTOR_BETA = {
+    "반도체": 1.20, "IT서비스": 1.05, "자동차": 1.10, "2차전지": 1.35,
+    "바이오": 1.40, "은행": 0.85, "통신": 0.70, "유통": 0.90,
+    "철강": 1.10, "조선": 1.30, "에너지": 1.05, "엔터": 1.25,
+    "기술": 1.10, "가상자산": 2.00,
 }
+
+# 폴백 WACC (DART/시총 데이터 부재 시)
+FALLBACK_WACC = 0.0875
 
 
 def build_inputs_from_raw(
@@ -80,10 +87,44 @@ def build_inputs_from_raw(
     # 피어 정보 (UI 표시용)
     peers_info = raw.get("peers") or peer_summary(auto_peers)
 
-    wacc = float(raw.get("wacc") or SECTOR_WACC.get(sector, 0.0875))
-    growth_short = float(raw.get("growth_rate") or 0.025)
-    if growth_short > 0.30:
-        growth_short = 0.30  # 비현실적 성장률 캡
+    # ─── WACC 동적 계산 (CAPM 기반) ──────────────────────────────────────
+    # 1) Tc: DART 법인세비용/영업이익. 없으면 CORPORATE_TAX_RATE(22%).
+    tax_expense = float(raw.get("tax_expense", 0) or 0)
+    interest_expense = float(raw.get("interest_expense", 0) or 0)
+    if tax_expense > 0 and op_inc > 0:
+        tax_rate = min(max(tax_expense / op_inc, 0.10), 0.30)
+    else:
+        tax_rate = CORPORATE_TAX_RATE
+    # 2) β: raw 명시 > 섹터 베타 > 1.0
+    beta = float(raw.get("beta") or SECTOR_BETA.get(sector, CAPM_BETA_DEFAULT))
+    # 3) WACC: raw 명시 > CAPM 동적 계산 > 폴백 8.75%
+    if raw.get("wacc"):
+        wacc = float(raw["wacc"])
+    elif mcap > 0:
+        wacc = calculate_wacc(
+            market_cap=mcap,
+            net_debt=net_debt,
+            interest_expense=interest_expense,
+            tax_rate=tax_rate,
+            beta=beta,
+        )
+    else:
+        wacc = FALLBACK_WACC
+
+    # ─── 성장률 동적 계산 (ROE × retention) ───────────────────────────────
+    # raw.growth_rate 명시 시 우선. 없으면 ROE × (1 - payout) 로 단기 g 산출.
+    # 장기는 단기의 절반으로 감속 (성숙기 가정), terminal 은 한국 GDP 추세 2.5%.
+    payout = float(raw.get("dividend_payout_ratio", 0.30) or 0.30)
+    if raw.get("growth_rate"):
+        growth_short = min(max(float(raw["growth_rate"]), 0.0), 0.20)
+    else:
+        growth_short = calculate_growth_rate(
+            net_income=net_income,
+            total_equity=total_equity,
+            dividend_payout_ratio=payout,
+        )
+    growth_long = growth_short * 0.5  # 후반 5년은 절반으로 감속
+    terminal_growth = 0.025            # 한국 GDP 추세 (설계서 v2.0)
 
     return SyInputs(
         ticker=raw["ticker"],
@@ -101,6 +142,12 @@ def build_inputs_from_raw(
         total_liabilities=total_liab,
         total_equity=total_equity,
         net_debt=net_debt,
+        # WACC 입력 (UI 표시·재계산용)
+        interest_expense=interest_expense,
+        tax_rate=tax_rate,
+        beta=beta,
+        risk_free_rate=CAPM_RF,
+        market_risk_premium=CAPM_MRP,
         # 자산가치접근법 강화용 세부 자산 (OpenDart 보강 — 없으면 0)
         current_assets=float(raw.get("current_assets", 0) or 0),
         tangible_assets=float(raw.get("tangible_assets", 0) or 0),
@@ -110,10 +157,11 @@ def build_inputs_from_raw(
         investment_assets=float(raw.get("investment_assets", 0) or 0),
         cash_equivalents=float(raw.get("cash_equivalents", 0) or 0),
         growth_rate_short=growth_short,
-        growth_rate_long=min(growth_short, 0.05),
-        terminal_growth=0.005,
+        growth_rate_long=growth_long,
+        terminal_growth=terminal_growth,
         wacc=wacc,
         forecast_years=10,
+        dividend_payout_ratio=payout,
         peer_per_avg=peer_per,
         peer_pbr_avg=peer_pbr,
         peer_psr_avg=peer_psr,

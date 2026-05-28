@@ -27,6 +27,17 @@ from typing import Any
 import statistics
 
 
+# ─── CAPM/WACC 표준 파라미터 (설계서 v2.0 기준) ────────────────────────────
+# Rf: 한국은행 국채 3년 (2026-05 기준 ~2.59%)
+# MRP: KOSPI 5년 평균 시장프리미엄 (~4.75%)
+# β:  Yahoo Finance 측 베타. 미수집 시 1.0 가정
+# Tc: 한국 법인세 실효세율 22% (DART 데이터 있으면 종목별 재계산)
+CAPM_RF = 0.0259
+CAPM_BETA_DEFAULT = 1.0
+CAPM_MRP = 0.0475
+CORPORATE_TAX_RATE = 0.22
+
+
 @dataclass
 class SyInputs:
     """SY 평가법 입력값."""
@@ -44,13 +55,20 @@ class SyInputs:
     operating_income: float = 0.0
     net_income: float = 0.0
     ebitda: float = 0.0
-    fcf: float = 0.0           # FCFF(자유현금흐름)
+    fcf: float = 0.0           # FCFF(자유현금흐름) — 정통 공식: EBIT(1-Tc)+감가-CapEx-ΔWC
 
     # 재무상태 (원)
     total_assets: float = 0.0
     total_liabilities: float = 0.0
     total_equity: float = 0.0  # 자산-부채
     net_debt: float = 0.0
+
+    # WACC 동적 계산용 입력 (DART 가용 시 사용)
+    interest_expense: float = 0.0     # 이자비용 (Rd 추정)
+    tax_rate: float = CORPORATE_TAX_RATE  # 실효세율 (DART: 법인세비용/영업이익)
+    beta: float = CAPM_BETA_DEFAULT       # 베타 (외부 입력 가능)
+    risk_free_rate: float = CAPM_RF
+    market_risk_premium: float = CAPM_MRP
 
     # 자산 세부 (자산가치접근법 강화용 — OpenDart 재무상태표)
     current_assets: float = 0.0       # 유동자산
@@ -62,11 +80,12 @@ class SyInputs:
     cash_equivalents: float = 0.0     # 현금및현금성자산
 
     # 성장/할인
-    growth_rate_short: float = 0.025  # 5년 단기 성장률
-    growth_rate_long: float = 0.025   # 6~10년
-    terminal_growth: float = 0.005    # 영구성장
-    wacc: float = 0.0875              # 가중평균자본비용
+    growth_rate_short: float = 0.05   # 5년 단기 성장률 (ROE×(1-payout) 로 동적 산출)
+    growth_rate_long: float = 0.03    # 6~10년
+    terminal_growth: float = 0.025    # 영구성장
+    wacc: float = 0.0875              # 가중평균자본비용 (동적 계산 결과 또는 폴백)
     forecast_years: int = 10           # 명시 예측기간 10년
+    dividend_payout_ratio: float = 0.30  # 배당성향 (ROE 성장률 산식용)
 
     # 피어 (상대가치)
     peer_per_avg: float = 0.0
@@ -135,6 +154,66 @@ class SyValuationResult:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+# -------- WACC 동적 계산 (CAPM 기반) --------
+
+def calculate_wacc(
+    market_cap: float,
+    net_debt: float,
+    interest_expense: float,
+    tax_rate: float = CORPORATE_TAX_RATE,
+    beta: float = CAPM_BETA_DEFAULT,
+    rf: float = CAPM_RF,
+    mrp: float = CAPM_MRP,
+) -> float:
+    """WACC = (E/V × Re) + (D/V × Rd × (1-Tc))
+
+    Re = Rf + β × MRP                              (CAPM)
+    Rd = interest_expense / net_debt               (DART)  부재 시 Rf × 1.5
+    가중치는 시가총액(E) 와 순부채(D, 0 이상) 로.
+    결과는 5%~15% 범위로 클립 (이상치 차단).
+    """
+    # 자기자본비용
+    re = rf + beta * mrp
+
+    # 타인자본비용
+    d_pos = max(net_debt, 0.0)
+    if d_pos > 0 and interest_expense > 0:
+        rd = interest_expense / d_pos
+    else:
+        rd = rf * 1.5
+    rd_after_tax = rd * (1 - tax_rate)
+
+    total_value = market_cap + d_pos
+    if total_value <= 0:
+        return 0.0875  # 폴백 — 입력 부적합 시 표준 8.75%
+
+    we = market_cap / total_value
+    wd = d_pos / total_value
+    wacc = we * re + wd * rd_after_tax
+
+    # 안전 범위 클립
+    return min(max(wacc, 0.05), 0.15)
+
+
+def calculate_growth_rate(
+    net_income: float,
+    total_equity: float,
+    dividend_payout_ratio: float = 0.30,
+    cap: float = 0.20,
+) -> float:
+    """지속가능 성장률 g = ROE × (1 - payout).
+
+    내부 자본만으로 달성 가능한 성장률 (sustainable growth rate).
+    cap 으로 비현실적 값 차단 (기본 20%).
+    """
+    if total_equity <= 0 or net_income <= 0:
+        return 0.05  # 폴백 — 데이터 부족 시 시장 평균 5%
+    roe = net_income / total_equity
+    retention = 1 - dividend_payout_ratio
+    g = roe * retention
+    return min(max(g, 0.0), cap)
 
 
 # -------- 1) 수익가치접근법 --------
@@ -283,12 +362,29 @@ def market_ev_ebitda(inp: SyInputs) -> float:
 
 # -------- 종합 --------
 
+# 투자 등급 기준 (설계서 v2.0):
+#   STRONG_BUY  ≥ +30%
+#   BUY         +15% ~ +30%
+#   ACCUMULATE  +5%  ~ +15%
+#   HOLD        -5%  ~ +5%
+#   REDUCE      -15% ~ -5%
+#   SELL        -30% ~ -15%
+#   STRONG_SELL < -30%
+RATING_THRESHOLDS = [
+    (0.30,  "STRONG_BUY"),
+    (0.15,  "BUY"),
+    (0.05,  "ACCUMULATE"),
+    (-0.05, "HOLD"),
+    (-0.15, "REDUCE"),
+    (-0.30, "SELL"),
+]
+
+
 def _rating(upside_mid: float) -> str:
-    if upside_mid >= 2.0:    return "STRONG_BUY"
-    if upside_mid >= 0.50:   return "BUY"
-    if upside_mid >= 0.10:   return "ACCUMULATE"
-    if upside_mid >= -0.10:  return "HOLD"
-    return "SELL"
+    for threshold, label in RATING_THRESHOLDS:
+        if upside_mid >= threshold:
+            return label
+    return "STRONG_SELL"
 
 
 def evaluate_sy(inp: SyInputs) -> SyValuationResult:

@@ -223,10 +223,41 @@ class DartConnector:
         depr = find_amount(
             ["dart_DepreciationExpense", "ifrs-full_DepreciationAndAmortisationExpense", "감가상각비"],
             "CF", allow_substring=True)
-        net_debt = (st_borrow + lt_borrow) - cash
+        # CapEx — 투자활동 현금흐름의 "유형자산의 취득" 등 (절대값). 부재 시 0 → 추정 폴백
+        capex = find_amount(
+            ["ifrs-full_PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+             "dart_PurchaseOfPropertyPlantAndEquipment",
+             "유형자산의취득", "유형자산의 취득"],
+            "CF", allow_substring=True)
+        capex = abs(capex)
 
+        # 손익계산서 추가 항목 — 법인세비용, 이자비용 (WACC 계산용)
+        tax_expense = (
+            find_amount(["ifrs-full_IncomeTaxExpenseContinuingOperations", "법인세비용", "법인세"], "IS")
+            or find_amount(["ifrs-full_IncomeTaxExpenseContinuingOperations", "법인세비용", "법인세"], "CIS")
+            or find_amount("법인세비용", "IS", allow_substring=True)
+        )
+        interest_expense = (
+            find_amount(["ifrs-full_InterestExpense", "dart_InterestExpense", "이자비용", "금융원가"], "IS")
+            or find_amount(["ifrs-full_InterestExpense", "dart_InterestExpense", "이자비용", "금융원가"], "CIS")
+            or find_amount("이자비용", "IS", allow_substring=True)
+        )
+
+        net_debt = (st_borrow + lt_borrow) - cash
         ebitda = op_inc + depr if op_inc > 0 else 0
-        fcf = net_inc * 0.85 if net_inc > 0 else 0  # 보수 추정
+        # FCFF 는 sy_builder 에서 정통 공식으로 계산 — 여기선 raw 데이터만 전달.
+        # 다만 호환을 위해 fcf 필드도 유지 (sample_financials 형식과 일치).
+        # fcf = EBIT(1-Tc) + 감가상각 - CapEx - ΔWC. 운전자본은 데이터 부족 → 0 가정.
+        if op_inc > 0:
+            tc_eff = (tax_expense / op_inc) if tax_expense > 0 else 0.22
+            tc_eff = min(max(tc_eff, 0.10), 0.30)   # 10~30% 범위로 클립 (이상치 방지)
+            dep_eff = depr if depr > 0 else op_inc * 0.05
+            cap_eff = capex if capex > 0 else dep_eff * 0.8
+            fcf_calc = op_inc * (1 - tc_eff) + dep_eff - cap_eff
+            # 음수면 보수 폴백: 영업이익 × (1-Tc) × 0.75
+            fcf = fcf_calc if fcf_calc > 0 else op_inc * (1 - tc_eff) * 0.75
+        else:
+            fcf = 0
 
         if revenue <= 0 and op_inc <= 0 and net_inc <= 0:
             return None
@@ -252,6 +283,11 @@ class DartConnector:
             "receivables": receivables,
             "investment_assets": investment_assets,
             "cash_equivalents": cash,
+            # WACC/FCFF 정통 공식용 추가 항목
+            "depreciation": depr,
+            "capex": capex,
+            "tax_expense": tax_expense,
+            "interest_expense": interest_expense,
             "_dart_year": rows[0].get("bsns_year") if rows else "",
             "_source": "dart",
         }

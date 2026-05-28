@@ -1084,8 +1084,10 @@ function renderSyDetailContent(d) {
           <tr class="no-hover"><td>부채총계</td><td>${bigKrwAuto(inp.total_liabilities)}</td></tr>
           <tr class="no-hover"><td>순자산</td><td>${bigKrwAuto(inp.total_equity)}</td></tr>
           <tr class="no-hover"><td>순부채</td><td>${bigKrwAuto(inp.net_debt)}</td></tr>
-          <tr class="no-hover"><td>WACC</td><td>${(inp.wacc*100).toFixed(2)}%</td></tr>
-          <tr class="no-hover"><td>단기 성장률</td><td>${(inp.growth_rate_short*100).toFixed(1)}%</td></tr>
+          <tr class="no-hover"><td>WACC</td><td><strong>${(inp.wacc*100).toFixed(2)}%</strong> <span class="muted" style="font-size:11px">(Rf ${(inp.risk_free_rate*100).toFixed(2)}% + β ${inp.beta?.toFixed(2)} × MRP ${(inp.market_risk_premium*100).toFixed(2)}%)</span></td></tr>
+          <tr class="no-hover"><td>실효세율 (Tc)</td><td>${(inp.tax_rate*100).toFixed(1)}%</td></tr>
+          <tr class="no-hover"><td>단기 성장률 (1~5y)</td><td>${(inp.growth_rate_short*100).toFixed(1)}% <span class="muted" style="font-size:11px">= ROE × (1 - 배당성향 ${(inp.dividend_payout_ratio*100).toFixed(0)}%)</span></td></tr>
+          <tr class="no-hover"><td>장기 성장률 (6~10y)</td><td>${(inp.growth_rate_long*100).toFixed(1)}%</td></tr>
           <tr class="no-hover"><td>영구 성장률</td><td>${(inp.terminal_growth*100).toFixed(1)}%</td></tr>
           <tr class="no-hover"><td>예측기간</td><td>${inp.forecast_years}년</td></tr>
         </table>
@@ -1113,6 +1115,24 @@ function renderSyDetailContent(d) {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="card" style="background:var(--bg-elev-2);font-size:12px">
+      <h3 style="font-size:13px;margin-bottom:8px">투자 등급 기준 <span class="muted" style="font-weight:400">／ RATING THRESHOLDS</span></h3>
+      <p class="muted" style="margin:0 0 8px">주당 상승여력 = (SY 주당적정가 − 현재가) ÷ 현재가. 아래 구간별 등급 부여.</p>
+      <table style="font-size:12px">
+        <thead><tr><th style="width:18%">등급</th><th style="width:22%">기준 (상승여력)</th><th>해석</th></tr></thead>
+        <tbody>
+          <tr class="no-hover"><td><span class="tag strong-buy">STRONG_BUY</span></td><td><strong>≥ +30%</strong></td><td>강한 저평가 — 적극 매수 권고</td></tr>
+          <tr class="no-hover"><td><span class="tag buy">BUY</span></td><td>+15% ~ +30%</td><td>저평가 — 매수 권고</td></tr>
+          <tr class="no-hover"><td><span class="tag buy">ACCUMULATE</span></td><td>+5% ~ +15%</td><td>소폭 저평가 — 분할 매수</td></tr>
+          <tr class="no-hover"><td><span class="tag hold">HOLD</span></td><td>−5% ~ +5%</td><td>적정가 — 보유</td></tr>
+          <tr class="no-hover"><td><span class="tag sell">REDUCE</span></td><td>−15% ~ −5%</td><td>소폭 고평가 — 비중 축소</td></tr>
+          <tr class="no-hover"><td><span class="tag sell">SELL</span></td><td>−30% ~ −15%</td><td>고평가 — 매도 권고</td></tr>
+          <tr class="no-hover"><td><span class="tag sell">STRONG_SELL</span></td><td>&lt; −30%</td><td>강한 고평가 — 즉시 매도</td></tr>
+        </tbody>
+      </table>
+      <p class="muted" style="margin:8px 0 0;font-size:11px">※ 이 등급은 SY 평가법(3접근법 종합) 기반 알고리즘 산출값입니다. 시장 변동성·이슈·뉴스 등은 별도 고려 필요.</p>
     </div>
   `;
 }
