@@ -120,39 +120,109 @@ class DartConnector:
         if not rows:
             return None
 
-        def find_amount(name_kw: str, sj: str = "") -> float:
-            """account_nm 이 name_kw 포함하는 행의 thstrm_amount(당기) 반환."""
+        def _parse(r: dict[str, Any]) -> float:
+            try:
+                return float((r.get("thstrm_amount") or "0").replace(",", ""))
+            except (ValueError, TypeError):
+                return 0.0
+
+        def find_amount(keys, sj: str = "", allow_substring: bool = False) -> float:
+            """account_id (IFRS 표준) 우선 → account_nm 정확매치 → (옵션) substring.
+
+            keys 는 단일 문자열 또는 우선순위 리스트.
+              - `ifrs-full_*`, `dart_*` 로 시작하면 account_id 매치
+              - 그 외는 account_nm 매치 (공백·괄호·콤마 제거 후 정확 비교)
+            allow_substring=True 면 정확 매치 실패 시 substring 폴백.
+            """
+            ks = [keys] if isinstance(keys, str) else list(keys)
+            def _norm(s: str) -> str:
+                return s.replace(" ", "").replace("(", "").replace(")", "").replace(",", "")
+            id_keys = [k for k in ks if k.startswith("ifrs-full_") or k.startswith("dart_")]
+            nm_keys = [k for k in ks if k not in id_keys]
+            nm_keys_norm = [_norm(k) for k in nm_keys]
+
             for r in rows:
                 if sj and r.get("sj_div") != sj:
                     continue
-                if name_kw in (r.get("account_nm") or ""):
-                    try:
-                        return float((r.get("thstrm_amount") or "0").replace(",", ""))
-                    except (ValueError, TypeError):
-                        return 0.0
+                # 1) account_id 정확 매치 (가장 신뢰 — IFRS 표준 태깅)
+                aid = (r.get("account_id") or "").strip()
+                if aid and aid in id_keys:
+                    return _parse(r)
+                # 2) account_nm 정확 매치 (정규화 후)
+                nm_norm = _norm((r.get("account_nm") or "").strip())
+                if nm_norm and nm_norm in nm_keys_norm:
+                    return _parse(r)
+            # 3) substring 폴백 (회사가 비표준 태깅한 케이스 — 최후의 수단)
+            if allow_substring:
+                for r in rows:
+                    if sj and r.get("sj_div") != sj:
+                        continue
+                    nm_norm = _norm((r.get("account_nm") or "").strip())
+                    for kw in nm_keys_norm:
+                        if kw and kw in nm_norm:
+                            return _parse(r)
             return 0.0
 
-        # 손익계산서 (sj_div=IS or CIS)
-        revenue = find_amount("매출액", "IS") or find_amount("매출", "CIS")
-        op_inc = find_amount("영업이익", "IS") or find_amount("영업이익", "CIS")
-        net_inc = find_amount("당기순이익", "IS") or find_amount("당기순이익", "CIS")
-        # 재무상태표 (sj_div=BS) — 총계
-        total_assets = find_amount("자산총계", "BS")
-        total_liab = find_amount("부채총계", "BS")
-        total_equity = find_amount("자본총계", "BS")
+        # 손익계산서 (sj_div=IS or CIS) — IFRS account_id 우선
+        revenue = (find_amount(["ifrs-full_Revenue", "매출액", "수익매출액", "영업수익"], "IS")
+                   or find_amount(["ifrs-full_Revenue", "매출액", "수익매출액", "영업수익"], "CIS")
+                   or find_amount(["매출액", "매출"], "IS", allow_substring=True))
+        op_inc = (find_amount(["dart_OperatingIncomeLoss", "ifrs-full_ProfitLossFromOperatingActivities", "영업이익", "영업이익손실"], "IS")
+                  or find_amount(["dart_OperatingIncomeLoss", "ifrs-full_ProfitLossFromOperatingActivities", "영업이익", "영업이익손실"], "CIS")
+                  or find_amount("영업이익", "IS", allow_substring=True))
+        net_inc = (find_amount(["ifrs-full_ProfitLoss", "당기순이익", "당기순이익손실"], "IS")
+                   or find_amount(["ifrs-full_ProfitLoss", "당기순이익", "당기순이익손실"], "CIS")
+                   or find_amount("당기순이익", "IS", allow_substring=True))
+
+        # 재무상태표 — 총계 (IFRS ID 우선, "자본및부채총계" 같은 합계행 자동 회피)
+        total_assets = find_amount(
+            ["ifrs-full_Assets", "자산총계", "총자산", "자산합계"], "BS", allow_substring=True)
+        total_equity = find_amount(
+            ["ifrs-full_Equity", "자본총계", "총자본", "자본합계"], "BS", allow_substring=True)
+        total_liab_raw = find_amount(
+            ["ifrs-full_Liabilities", "부채총계", "총부채", "부채합계"], "BS", allow_substring=False)
+        # 검증: 자산 = 부채 + 자본 — 자산·자본이 신뢰 가능하면 항등식 우선
+        # "자본및부채총계"(= 자산총계) 행을 부채로 오매칭하는 케이스 차단
+        if total_assets > 0 and total_equity > 0:
+            total_liab_calc = total_assets - total_equity
+            # raw가 자산총계와 ~동일하면 (오매칭 신호) 항등식 사용
+            if total_liab_raw <= 0 or abs(total_liab_raw - total_assets) / total_assets < 0.02:
+                total_liab = max(total_liab_calc, 0)
+            else:
+                # 둘 다 의미있는 값이면 raw 채택 (보고서가 직접 명시한 부채)
+                total_liab = total_liab_raw
+        else:
+            total_liab = total_liab_raw
+
         # 재무상태표 — 자산 세부 (자산가치접근법 보강)
-        current_assets = find_amount("유동자산", "BS")
-        tangible_assets = find_amount("유형자산", "BS")
-        intangible_assets = find_amount("무형자산", "BS")
-        inventory = find_amount("재고자산", "BS")
-        receivables = find_amount("매출채권", "BS")
-        investment_assets = find_amount("투자부동산", "BS")
+        current_assets = find_amount(
+            ["ifrs-full_CurrentAssets", "유동자산"], "BS", allow_substring=True)
+        tangible_assets = find_amount(
+            ["ifrs-full_PropertyPlantAndEquipment", "유형자산"], "BS", allow_substring=True)
+        intangible_assets = find_amount(
+            ["ifrs-full_IntangibleAssetsOtherThanGoodwill", "ifrs-full_IntangibleAssetsAndGoodwill", "무형자산"],
+            "BS", allow_substring=True)
+        inventory = find_amount(
+            ["ifrs-full_Inventories", "재고자산"], "BS", allow_substring=True)
+        receivables = find_amount(
+            ["ifrs-full_TradeAndOtherCurrentReceivables", "매출채권", "매출채권및기타채권"],
+            "BS", allow_substring=True)
+        investment_assets = find_amount(
+            ["ifrs-full_InvestmentProperty", "투자부동산", "투자자산"], "BS", allow_substring=True)
         # 재무상태표 — 차입/현금 (순부채)
-        cash = find_amount("현금및현금성자산", "BS")
-        st_borrow = find_amount("단기차입금", "BS")
-        lt_borrow = find_amount("장기차입금", "BS")
+        cash = find_amount(
+            ["ifrs-full_CashAndCashEquivalents", "현금및현금성자산", "현금성자산"],
+            "BS", allow_substring=True)
+        st_borrow = find_amount(
+            ["ifrs-full_ShorttermBorrowings", "dart_ShortTermBorrowings", "단기차입금"],
+            "BS", allow_substring=True)
+        lt_borrow = find_amount(
+            ["ifrs-full_NoncurrentBorrowings", "dart_LongTermBorrowings", "장기차입금"],
+            "BS", allow_substring=True)
         # 현금흐름표 (sj_div=CF)
-        depr = find_amount("감가상각비", "CF")
+        depr = find_amount(
+            ["dart_DepreciationExpense", "ifrs-full_DepreciationAndAmortisationExpense", "감가상각비"],
+            "CF", allow_substring=True)
         net_debt = (st_borrow + lt_borrow) - cash
 
         ebitda = op_inc + depr if op_inc > 0 else 0
