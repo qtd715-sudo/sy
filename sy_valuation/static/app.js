@@ -165,6 +165,7 @@ async function render() {
   const { path, params } = parseRoute();
   const root = $("#content");
   if (path.startsWith("/dashboard"))   { setActiveNav("dashboard");   return renderDashboard(root); }
+  if (path.startsWith("/sy-analysis")) { setActiveNav("sy-analysis"); return renderSyAnalysis(root, params); }
   if (path.startsWith("/undervalued")) { setActiveNav("undervalued"); return renderUndervalued(root); }
   if (path.startsWith("/search"))      { setActiveNav("search");      return renderSearch(root, params); }
   if (path.startsWith("/recommend"))   { setActiveNav("recommend");   return renderRecommend(root, params); }
@@ -654,6 +655,220 @@ function renderRecommendation(d) {
     <div class="card">
       <h3>최근 뉴스 (감성분석 기반 입력)</h3>
       ${news.length ? renderNewsList(news) : `<div class="muted">뉴스 조회 실패 또는 결과 없음</div>`}
+    </div>
+  `;
+}
+
+// ---------- SY ANALYSIS (00 · 기업가치분석) ----------
+// 단일 기업 — 검색 → 자동 데이터 수집(OpenDart + 네이버 + Yahoo) → CAPM/WACC/DCF/자산/상대 → 투자 등급.
+
+const SY_RATING_TIERS = [
+  { min:  0.30, code: "STRONG_BUY",  emoji: "🚀", label: "강력 매수" },
+  { min:  0.15, code: "BUY",         emoji: "📈", label: "매수" },
+  { min:  0.05, code: "ACCUMULATE",  emoji: "⬆️", label: "분할 매수" },
+  { min: -0.05, code: "HOLD",        emoji: "➡️", label: "보유" },
+  { min: -0.15, code: "REDUCE",      emoji: "⬇️", label: "비중 축소" },
+  { min: -0.30, code: "SELL",        emoji: "📉", label: "매도" },
+  { min: -Infinity, code: "STRONG_SELL", emoji: "💥", label: "강력 매도" },
+];
+
+function syRating(upside) {
+  for (const t of SY_RATING_TIERS) {
+    if (upside >= t.min) return t;
+  }
+  return SY_RATING_TIERS[SY_RATING_TIERS.length - 1];
+}
+
+async function renderSyAnalysis(root, params) {
+  const q = params.q || "";
+  root.innerHTML = `
+    <h1 class="page-title">기업가치분석 (SY)<span class="muted">／ AUTO-DCF + ASSET + MARKET</span></h1>
+    ${metaStrip('§00·SY-ANALYSIS', 'CAPM · WACC · DCF', 'OPENDART · NAVER · YAHOO', '7-TIER RATING')}
+    <p class="page-sub">기업명 / 종목코드 입력 → OpenDart(재무) + 네이버 금융 + Yahoo Finance에서 자동 데이터 수집 → CAPM 자기자본비용 + WACC + DCF + 자산·상대가치 → 오늘 기준 투자 등급 산출.</p>
+
+    <div class="card">
+      <form id="syaForm" style="display:flex;gap:8px;position:relative">
+        <input id="syaInp" type="text" value="${escapeHtml(q)}" placeholder="🔍 기업명 또는 종목코드 — 예: 삼성전자, 엠로, 005930" autocomplete="off"
+          style="flex:1;padding:12px 14px;background:var(--bg-elev-2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px">
+        <button type="submit" style="padding:12px 24px;background:var(--accent);color:#00322e;border:none;border-radius:6px;cursor:pointer;font-weight:600">🔄 자동 평가</button>
+      </form>
+      <div class="muted" style="margin-top:8px;font-size:12px">
+        사용자 입력 → 재무·주가·베타 자동 수집 → CAPM/WACC/DCF/자산/상대가치 자동 계산 → 오늘 기준 투자 판단 출력
+      </div>
+    </div>
+
+    <div id="syaResult"></div>
+  `;
+  const inp = $("#syaInp");
+  attachAutocomplete(inp, (item) => navigate("/sy-analysis", { q: item.ticker }));
+  $("#syaForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const v = inp.value.trim();
+    if (v) navigate("/sy-analysis", { q: v });
+  });
+  if (q) loadSyAnalysis(q);
+}
+
+async function loadSyAnalysis(q) {
+  const out = $("#syaResult");
+  out.innerHTML = `
+    <div class="card loading">
+      📥 데이터 수집 중…<br>
+      <span class="muted" style="font-size:12px">OpenDart 재무제표 · 네이버/Yahoo 주가·베타 · 거시지표 (Rf · MRP · 세율)</span>
+    </div>`;
+  try {
+    const d = await api(`/api/sy/evaluate?q=${encodeURIComponent(q)}`, { timeout: 15000 });
+    if (d.error) {
+      const sug = (d.suggestions || []).map(s =>
+        `<a href="#/sy-analysis?q=${encodeURIComponent(s.ticker)}" class="suggest-pill">${escapeHtml(s.name)} <span class="muted">${s.ticker}</span></a>`
+      ).join(" ");
+      out.innerHTML = `
+        <div class="card error">${escapeHtml(d.error)}</div>
+        ${d.hint ? `<div class="card muted">${escapeHtml(d.hint)}</div>` : ""}
+        ${sug ? `<div class="card">${sug}</div>` : ""}
+      `;
+      return;
+    }
+    out.innerHTML = renderSyAnalysisContent(d) +
+      asOfLine("평가 기준일", d.price_as_of || Date.now(), "재무 DART 2025-12 · 자동 피어 멀티플");
+  } catch (e) {
+    out.innerHTML = `<div class="card error">${e.message}</div>`;
+  }
+}
+
+function renderSyAnalysisContent(d) {
+  const inp = d.inputs || {};
+  const upside = d.upside_per_share || 0;
+  const tier = syRating(upside);
+  const ratingCls = tier.code === "STRONG_BUY" ? "strong-buy"
+                  : tier.code === "BUY" || tier.code === "ACCUMULATE" ? "buy"
+                  : tier.code === "HOLD" ? "hold"
+                  : "sell";
+
+  const dcfRows = (d.dcf_rows || []);   // 서버가 내려주면 표시, 없으면 생략
+  const peers = inp.peers || [];
+
+  // CAPM 분해 (서버에서 안 줄 경우 추정치 사용)
+  const rf = (inp.risk_free_rate ?? 0.025);
+  const mr = (inp.market_return ?? 0.0725);
+  const mrp = mr - rf;
+  const beta = inp.beta ?? (peers.length ? (peers.reduce((a,p)=>a+(p.beta_52w||1),0)/peers.length) : 1.0);
+  const re = (inp.cost_of_equity ?? (rf + beta * mrp));
+  const rd = (inp.cost_of_debt ?? 0);
+
+  return `
+    <div class="grid-4">
+      <div class="kpi">
+        <div class="label">종목</div>
+        <div class="value">${escapeHtml(d.name)}</div>
+        <div class="sub">${d.ticker} · ${escapeHtml(d.sector || "")}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">현재 주가</div>
+        <div class="value">${fmt.krw(d.current_price)}</div>
+        <div class="sub">시총 ${bigKrwAuto(d.market_cap)}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">⭐ 목표가 (적정주가)</div>
+        <div class="value" style="color:var(--accent)">${fmt.krw(d.fair_price_mid)}</div>
+        <div class="sub">${fmt.krw(d.fair_price_min)} ~ ${fmt.krw(d.fair_price_max)}</div>
+      </div>
+      <div class="kpi">
+        <div class="label">상승률</div>
+        <div class="value ${upside>=0?'pos':'neg'}">${fmt.pct(upside)}</div>
+        <div class="sub"><span class="tag ${ratingCls}">${tier.emoji} ${tier.code}</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="background:rgba(79,209,197,0.06);border-color:rgba(79,209,197,0.3)">
+      <h3>🎯 투자 등급 — ${tier.emoji} <strong>${tier.code}</strong> <span class="muted">(${tier.label})</span></h3>
+      <table>
+        <tr class="no-hover"><td>현재 주가</td><td><strong>${fmt.krw(d.current_price)}</strong></td></tr>
+        <tr class="no-hover"><td>⭐ 목표가 (mid)</td><td><strong style="color:var(--accent)">${fmt.krw(d.fair_price_mid)}</strong></td></tr>
+        <tr class="no-hover"><td>상승률</td><td class="${upside>=0?'pos':'neg'}"><strong>${fmt.pct(upside)}</strong></td></tr>
+        <tr class="no-hover"><td>평가 기준일</td><td>${new Date().toLocaleString("ko-KR", {hour12:false})}</td></tr>
+      </table>
+      <div class="muted" style="margin-top:8px;font-size:12px">
+        7-tier 등급 기준: STRONG_BUY ≥+30% · BUY ≥+15% · ACCUMULATE ≥+5% · HOLD ±5% · REDUCE ≥-15% · SELL ≥-30% · STRONG_SELL &lt;-30%
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>✅ 평가 지표 (CAPM · WACC)</h3>
+        <table>
+          <tr class="no-hover"><td>Rf (무위험수익률)</td><td>${(rf*100).toFixed(2)}%</td></tr>
+          <tr class="no-hover"><td>MRP (시장위험프리미엄)</td><td>${(mrp*100).toFixed(2)}%</td></tr>
+          <tr class="no-hover"><td>β (베타)</td><td>${beta.toFixed(2)}</td></tr>
+          <tr class="no-hover"><td><strong>Re (자기자본비용)</strong></td><td><strong>${(re*100).toFixed(2)}%</strong></td></tr>
+          <tr class="no-hover"><td>Rd (타인자본비용, 세후)</td><td>${rd>0?(rd*100).toFixed(2)+"%":"—"}</td></tr>
+          <tr class="no-hover" style="background:var(--bg-elev-2);border-top:2px solid var(--accent)">
+            <td><strong>WACC</strong></td>
+            <td><strong style="color:var(--accent)">${(inp.wacc*100).toFixed(2)}%</strong></td>
+          </tr>
+          <tr class="no-hover"><td>기초 FCFF</td><td>${bigKrwAuto(inp.fcf)}</td></tr>
+          <tr class="no-hover"><td>예측기간</td><td>${inp.forecast_years || 10}년 + 영구가치</td></tr>
+          <tr class="no-hover"><td>단기/장기/영구 성장률</td><td>${(inp.growth_rate_short*100).toFixed(1)}% / ${(inp.growth_rate_long*100).toFixed(1)}% / ${(inp.terminal_growth*100).toFixed(1)}%</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>💰 3접근법 기업가치</h3>
+        <table>
+          <thead><tr><th>접근법</th><th>중간값</th><th>vs 시총</th></tr></thead>
+          <tbody>
+            <tr class="no-hover">
+              <td><strong>수익가치 (DCF)</strong><div class="muted">FCFF 10y + 영구가치</div></td>
+              <td><strong>${bigKrwAuto(d.income_mid)}</strong></td>
+              <td class="${d.income_mid > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.income_mid - d.market_cap)/d.market_cap) : '-'}</td>
+            </tr>
+            <tr class="no-hover">
+              <td><strong>자산가치</strong><div class="muted">순자산 · 청산가치 · 조정NAV</div></td>
+              <td><strong>${bigKrwAuto(d.asset_book)}</strong></td>
+              <td class="${d.asset_book > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.asset_book - d.market_cap)/d.market_cap) : '-'}</td>
+            </tr>
+            <tr class="no-hover">
+              <td><strong>상대가치</strong><div class="muted">PER · PBR · PSR · EV/EBITDA</div></td>
+              <td><strong>${bigKrwAuto(d.market_mid)}</strong></td>
+              <td class="${d.market_mid > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.market_mid - d.market_cap)/d.market_cap) : '-'}</td>
+            </tr>
+            <tr class="no-hover" style="background:var(--bg-elev-2);border-top:2px solid var(--accent)">
+              <td><strong>★ 종합 기업가치</strong></td>
+              <td><strong style="color:var(--accent)">${bigKrwAuto(d.enterprise_mid)}</strong></td>
+              <td class="${d.upside_mid>=0?'pos':'neg'}"><strong>${fmt.pct(d.upside_mid)}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="muted" style="margin-top:8px;font-size:12px">
+          상세 모델별 산출 내역은 <a href="#/sy-detail?q=${encodeURIComponent(d.ticker)}">06 · SY 가치평가</a>에서 확인.
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📥 자동 수집 데이터 (OpenDart + 네이버 + Yahoo)</h3>
+      <div class="grid-2">
+        <div>
+          <h4 style="margin-bottom:6px">손익 (연간)</h4>
+          <table>
+            <tr class="no-hover"><td>매출액</td><td>${bigKrwAuto(inp.revenue)}</td></tr>
+            <tr class="no-hover"><td>영업이익</td><td>${bigKrwAuto(inp.operating_income)}</td></tr>
+            <tr class="no-hover"><td>당기순이익</td><td>${bigKrwAuto(inp.net_income)}</td></tr>
+            <tr class="no-hover"><td>EBITDA</td><td>${bigKrwAuto(inp.ebitda)}</td></tr>
+            <tr class="no-hover"><td>FCFF</td><td>${bigKrwAuto(inp.fcf)}</td></tr>
+          </table>
+        </div>
+        <div>
+          <h4 style="margin-bottom:6px">재무상태 · 시장</h4>
+          <table>
+            <tr class="no-hover"><td>자산총계</td><td>${bigKrwAuto(inp.total_assets)}</td></tr>
+            <tr class="no-hover"><td>부채총계</td><td>${bigKrwAuto(inp.total_liabilities)}</td></tr>
+            <tr class="no-hover"><td>자본총계 (순자산)</td><td>${bigKrwAuto(inp.total_equity)}</td></tr>
+            <tr class="no-hover"><td>순부채</td><td>${bigKrwAuto(inp.net_debt)}</td></tr>
+            <tr class="no-hover"><td>발행주식수</td><td>${fmt.num(d.shares_outstanding, 0)} 주</td></tr>
+          </table>
+        </div>
+      </div>
     </div>
   `;
 }

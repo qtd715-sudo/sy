@@ -52,6 +52,15 @@ class SyInputs:
     total_equity: float = 0.0  # 자산-부채
     net_debt: float = 0.0
 
+    # 자산 세부 (자산가치접근법 강화용 — OpenDart 재무상태표)
+    current_assets: float = 0.0       # 유동자산
+    tangible_assets: float = 0.0      # 유형자산
+    intangible_assets: float = 0.0    # 무형자산 (영업권/브랜드 등)
+    inventory: float = 0.0            # 재고자산
+    receivables: float = 0.0          # 매출채권
+    investment_assets: float = 0.0    # 투자부동산
+    cash_equivalents: float = 0.0     # 현금및현금성자산
+
     # 성장/할인
     growth_rate_short: float = 0.025  # 5년 단기 성장률
     growth_rate_long: float = 0.025   # 6~10년
@@ -84,8 +93,13 @@ class SyValuationResult:
     income_mid: float = 0.0
     income_max: float = 0.0
 
-    asset_book: float = 0.0          # 순자산
-    asset_liquidation: float = 0.0   # 청산가치
+    asset_book: float = 0.0          # 순자산 (자본총계 또는 자산-부채)
+    asset_liquidation: float = 0.0   # 청산가치 = 순자산 × liquidation_discount
+    asset_adjusted_nav: float = 0.0  # 조정 순자산 — 자산을 항목별 보수계수로 재평가 후 부채 차감
+    asset_nnwc: float = 0.0          # 순현금자산(Net-Net Working Capital, 그레이엄식) = 유동자산 - 총부채
+    asset_min: float = 0.0           # 자산접근법 min/mid/max
+    asset_mid: float = 0.0
+    asset_max: float = 0.0
 
     market_per: float = 0.0
     market_pbr: float = 0.0
@@ -160,13 +174,84 @@ def op_income_multiple(inp: SyInputs, mult: float = 10.0) -> float:
 
 
 # -------- 2) 자산가치접근법 --------
+# 4가지 방법으로 자산가치 범위 산출:
+#   ① 순자산(Book NAV)         = 자본총계 (자산-부채)
+#   ② 청산가치(Liquidation)     = 순자산 × liquidation_discount(기본 0.7)
+#   ③ 조정 순자산(Adjusted NAV) = 항목별 보수계수 재평가 후 부채 차감
+#                                  유형자산 ×1.0 + 투자부동산 ×0.9 + 현금 ×1.0
+#                                  + 매출채권 ×0.85 + 재고자산 ×0.7 + 무형자산 ×0.5
+#                                  + 기타(잔여) ×0.5  −  총부채
+#   ④ 순현금자산(NNWC, Graham)  = 유동자산 − 총부채
+
+# 자산 항목별 보수계수 (장부가 → 현실 회수가치)
+ASSET_HAIRCUTS = {
+    "tangible":   1.00,  # 유형자산 (현물 — 시장가 추정 어려워 장부가 유지)
+    "investment": 0.90,  # 투자부동산 (10% 할인)
+    "cash":       1.00,  # 현금성자산
+    "receivable": 0.85,  # 매출채권 (대손 15%)
+    "inventory":  0.70,  # 재고자산 (할인판매 30%)
+    "intangible": 0.50,  # 무형자산 (영업권/브랜드는 보수적으로 절반만 인정)
+    "other":      0.50,  # 잔여(기타 비유동자산 등) — 50% 인정
+}
+
 
 def asset_book(inp: SyInputs) -> float:
+    """① 순자산 = 자본총계 (또는 자산총계 − 부채총계)."""
     if inp.total_equity > 0:
         return inp.total_equity
     if inp.total_assets > 0:
         return inp.total_assets - max(inp.total_liabilities, 0)
     return 0.0
+
+
+def asset_adjusted_nav(inp: SyInputs) -> float:
+    """③ 조정 순자산 — OpenDart 세부 자산 항목별 보수계수 재평가.
+
+    자산을 다음 6 카테고리로 분해 후 보수계수 적용 → 합산 → 부채 차감:
+      - 유형자산(1.0), 투자부동산(0.9), 현금(1.0),
+        매출채권(0.85), 재고자산(0.7), 무형자산(0.5),
+        그 외 잔여(기타 자산) 0.5
+    세부 자산 데이터 부족 시 0 반환 (장부 NAV로 대체 가능).
+    """
+    h = ASSET_HAIRCUTS
+    classified = (
+        inp.tangible_assets
+        + inp.intangible_assets
+        + inp.inventory
+        + inp.receivables
+        + inp.investment_assets
+        + inp.cash_equivalents
+    )
+    # 세부 자산이 모두 0이면 조정 NAV 계산 불가
+    if classified <= 0:
+        return 0.0
+
+    adjusted = (
+        inp.tangible_assets   * h["tangible"]
+        + inp.investment_assets * h["investment"]
+        + inp.cash_equivalents  * h["cash"]
+        + inp.receivables       * h["receivable"]
+        + inp.inventory         * h["inventory"]
+        + inp.intangible_assets * h["intangible"]
+    )
+    # 자산총계와 분류된 자산의 차이 = 기타 자산 → 50% 보수
+    if inp.total_assets > 0:
+        other = max(inp.total_assets - classified, 0.0)
+        adjusted += other * h["other"]
+
+    nav = adjusted - max(inp.total_liabilities, 0.0)
+    return max(nav, 0.0)
+
+
+def asset_nnwc(inp: SyInputs) -> float:
+    """④ 순현금자산(Net-Net Working Capital) — 벤저민 그레이엄.
+
+    유동자산 − 총부채 (가장 보수적인 자산가치 — 청산 시 즉시 회수 가능 자산만).
+    음수면 0 반환.
+    """
+    if inp.current_assets <= 0 or inp.total_liabilities < 0:
+        return 0.0
+    return max(inp.current_assets - inp.total_liabilities, 0.0)
 
 
 # -------- 3) 상대가치접근법 --------
@@ -220,9 +305,19 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
     if not income_vals:
         notes.append("수익가치: 계산 가능한 모델 없음 (FCF/EBITDA/영업이익 부족)")
 
-    # 2) 자산가치
+    # 2) 자산가치 — 4가지 방법
     book = asset_book(inp)
     liq = book * inp.liquidation_discount if book > 0 else 0.0
+    adj_nav = asset_adjusted_nav(inp)
+    nnwc = asset_nnwc(inp)
+    asset_vals = [v for v in (book, liq, adj_nav, nnwc) if v > 0]
+    asset_lo = min(asset_vals) if asset_vals else 0.0
+    asset_md = statistics.median(asset_vals) if asset_vals else 0.0
+    asset_hi = max(asset_vals) if asset_vals else 0.0
+    if not asset_vals:
+        notes.append("자산가치: 재무상태표 데이터 부족")
+    elif adj_nav <= 0 and (inp.tangible_assets + inp.intangible_assets + inp.inventory) <= 0:
+        notes.append("자산가치 — 조정 NAV: OpenDart 자산 세부 항목 부족, 장부 NAV로 대체")
 
     # 3) 상대가치
     per_v = market_per(inp)
@@ -236,10 +331,10 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
     market_max = max(market_vals) if market_vals else 0.0
     market_mid = statistics.median(market_vals) if market_vals else 0.0
 
-    # 종합: 3접근법의 min/mid/max 묶음
-    all_mins = [v for v in (income_min, book, market_min) if v > 0]
-    all_mids = [v for v in (income_mid, book, market_mid) if v > 0]
-    all_maxs = [v for v in (income_max, book, market_max) if v > 0]
+    # 종합: 3접근법의 min/mid/max 묶음 (자산은 새 min/mid/max 범위 사용)
+    all_mins = [v for v in (income_min, asset_lo, market_min) if v > 0]
+    all_mids = [v for v in (income_mid, asset_md, market_mid) if v > 0]
+    all_maxs = [v for v in (income_max, asset_hi, market_max) if v > 0]
     enterprise_min = min(all_mins) if all_mins else 0.0
     enterprise_mid = statistics.median(all_mids) if all_mids else 0.0
     enterprise_max = max(all_maxs) if all_maxs else 0.0
@@ -261,7 +356,9 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
         {"approach": "수익가치", "method": "EBITDA × peer 멀티플",  "value": eb_mult},
         {"approach": "수익가치", "method": "영업이익 × 10x",         "value": op_mult},
         {"approach": "자산가치", "method": "순자산 (자산-부채)",      "value": book},
-        {"approach": "자산가치", "method": "청산가치 (×0.7)",         "value": liq},
+        {"approach": "자산가치", "method": f"청산가치 (×{inp.liquidation_discount:.2f})", "value": liq},
+        {"approach": "자산가치", "method": "조정 NAV (항목별 보수계수)", "value": adj_nav},
+        {"approach": "자산가치", "method": "순현금자산(NNWC, Graham)",  "value": nnwc},
         {"approach": "상대가치", "method": "PER × 순이익",            "value": per_v},
         {"approach": "상대가치", "method": "PBR × 순자산",            "value": pbr_v},
         {"approach": "상대가치", "method": "PSR × 매출",              "value": psr_v},
@@ -278,6 +375,11 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
         income_max=round(income_max, 0),
         asset_book=round(book, 0),
         asset_liquidation=round(liq, 0),
+        asset_adjusted_nav=round(adj_nav, 0),
+        asset_nnwc=round(nnwc, 0),
+        asset_min=round(asset_lo, 0),
+        asset_mid=round(asset_md, 0),
+        asset_max=round(asset_hi, 0),
         market_per=round(per_v, 0),
         market_pbr=round(pbr_v, 0),
         market_psr=round(psr_v, 0),

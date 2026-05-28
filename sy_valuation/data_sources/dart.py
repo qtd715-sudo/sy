@@ -136,16 +136,23 @@ class DartConnector:
         revenue = find_amount("매출액", "IS") or find_amount("매출", "CIS")
         op_inc = find_amount("영업이익", "IS") or find_amount("영업이익", "CIS")
         net_inc = find_amount("당기순이익", "IS") or find_amount("당기순이익", "CIS")
-        # 재무상태표 (sj_div=BS)
+        # 재무상태표 (sj_div=BS) — 총계
         total_assets = find_amount("자산총계", "BS")
         total_liab = find_amount("부채총계", "BS")
         total_equity = find_amount("자본총계", "BS")
-        # 현금흐름표 (sj_div=CF)
-        depr = find_amount("감가상각비", "CF")
-        # 순부채 추정 (차입금 - 현금)
+        # 재무상태표 — 자산 세부 (자산가치접근법 보강)
+        current_assets = find_amount("유동자산", "BS")
+        tangible_assets = find_amount("유형자산", "BS")
+        intangible_assets = find_amount("무형자산", "BS")
+        inventory = find_amount("재고자산", "BS")
+        receivables = find_amount("매출채권", "BS")
+        investment_assets = find_amount("투자부동산", "BS")
+        # 재무상태표 — 차입/현금 (순부채)
         cash = find_amount("현금및현금성자산", "BS")
         st_borrow = find_amount("단기차입금", "BS")
         lt_borrow = find_amount("장기차입금", "BS")
+        # 현금흐름표 (sj_div=CF)
+        depr = find_amount("감가상각비", "CF")
         net_debt = (st_borrow + lt_borrow) - cash
 
         ebitda = op_inc + depr if op_inc > 0 else 0
@@ -167,6 +174,14 @@ class DartConnector:
             "total_liabilities": total_liab,
             "total_equity": total_equity,
             "net_debt": net_debt,
+            # 자산가치접근법 강화용 세부 자산
+            "current_assets": current_assets,
+            "tangible_assets": tangible_assets,
+            "intangible_assets": intangible_assets,
+            "inventory": inventory,
+            "receivables": receivables,
+            "investment_assets": investment_assets,
+            "cash_equivalents": cash,
             "_dart_year": rows[0].get("bsns_year") if rows else "",
             "_source": "dart",
         }
