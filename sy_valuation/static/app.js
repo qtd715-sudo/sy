@@ -127,24 +127,29 @@ function schedulePrefetch() {
 
 function initHeader() {
   const inp = $("#globalSearch");
-  attachAutocomplete(inp, (item) => navigate("/search", { q: item.ticker }));
+  // 검색은 종합 분석 페이지로 (재구성 후 의사결정 종착지)
+  attachAutocomplete(inp, (item) => navigate("/analysis", { q: item.ticker }));
   $("#globalSearchBtn").addEventListener("click", () => {
     const q = inp.value.trim();
-    if (q) navigate("/search", { q });
+    if (q) navigate("/analysis", { q });
   });
   inp.addEventListener("keydown", e => {
     if (e.key === "Enter" && !$(".ac-dropdown.active")) {
       const q = inp.value.trim();
-      if (q) navigate("/search", { q });
+      if (q) navigate("/analysis", { q });
     }
   });
 
-  api("/api/health").then(h => {
-    const flags = [];
-    flags.push(`종목 ${h.tickers_loaded}개 (정확평가 ${h.samples_loaded})`);
-    flags.push(h.dart_enabled ? "DART ✓" : "DART ✗");
-    flags.push(h.naver_news_enabled ? "Naver ✓" : "Naver(RSS)");
-    $("#status").textContent = flags.join(" · ");
+  // 로고 클릭 → 01 대시보드
+  const brand = $(".brand");
+  if (brand) {
+    brand.style.cursor = "pointer";
+    brand.addEventListener("click", () => navigate("/dashboard"));
+  }
+
+  // 헤더 상태바 — 백엔드 응답 없을 때만 경고 표시 (정상 시 종목 수 등은 숨김)
+  api("/api/health").then(() => {
+    $("#status").textContent = "";
   }).catch(() => {
     $("#status").textContent = "백엔드 응답 없음";
     $("#status").style.color = "var(--neg)";
