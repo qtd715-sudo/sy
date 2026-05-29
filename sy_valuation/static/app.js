@@ -259,9 +259,217 @@ async function renderMultiPage(root, params) {
 }
 
 async function renderAnalysisPage(root, params) {
-  // C5 에서 SY + 다중모델 + 추천 통합 페이지로 신규 구현 예정.
-  // 현재는 기존 renderRecommend (구 04) 그대로.
-  return renderRecommend(root, params);
+  // 04 종합 분석 — SY 평가법 + 다중모델 평가 + 뉴스 감성 + 의사결정
+  // 3개 API 병렬 호출 (sy_evaluate + valuation + recommend)
+  const q = params.q || "";
+  root.innerHTML = `
+    <h1 class="page-title">종합 분석<span class="muted">／ SY + MULTI-MODEL + DECISION</span></h1>
+    ${metaStrip('§04·ANALYSIS', 'SY 평가법', '9-모델 비교', '뉴스 감성 + 의사결정')}
+    <p class="page-sub">SY 평가법(3접근법) + 다중모델(9개) + 뉴스 감성 + 변동성 → 단기/장기 의사결정 한 화면.</p>
+
+    <form id="anaForm" class="page-search">
+      <input id="anaInp" type="text" value="${escapeHtml(q)}" placeholder="🔍 기업명 또는 종목코드 — 예: 삼성전자, 엠로, 005930" autocomplete="off">
+      <button type="submit">분석</button>
+    </form>
+
+    <div id="anaResult"></div>
+  `;
+  const inp = $("#anaInp");
+  attachAutocomplete(inp, (item) => navigate("/analysis", { q: item.ticker }));
+  $("#anaForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const v = inp.value.trim();
+    if (v) navigate("/analysis", { q: v });
+  });
+
+  if (!q) return;
+
+  const out = $("#anaResult");
+  out.innerHTML = `<div class="loading">분석 중… (SY + 다중모델 + 뉴스 감성 병렬 호출)</div>`;
+
+  try {
+    // 3개 API 병렬 호출 — 어느 하나 실패해도 나머지 표시
+    const [syRes, valRes, recRes] = await Promise.allSettled([
+      api(`/api/sy/evaluate?q=${encodeURIComponent(q)}`, { timeout: 20000 }),
+      api(`/api/valuation?q=${encodeURIComponent(q)}`, { timeout: 20000 }),
+      api(`/api/recommend?q=${encodeURIComponent(q)}`, { timeout: 20000 }),
+    ]);
+    const sy  = syRes.status  === 'fulfilled' ? syRes.value  : null;
+    const val = valRes.status === 'fulfilled' ? valRes.value : null;
+    const rec = recRes.status === 'fulfilled' ? recRes.value : null;
+
+    if (!sy && !val && !rec) {
+      out.innerHTML = `<div class="error">3개 API 모두 응답 실패. 종목을 다시 확인해주세요.</div>`;
+      return;
+    }
+    out.innerHTML = renderAnalysisContent({ sy, val, rec, q });
+  } catch (e) {
+    out.innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+function renderAnalysisContent({ sy, val, rec, q }) {
+  // ─── 종목 헤더 ───────────────────────────────────────────────
+  const name   = sy?.name   || val?.financials?.name   || q;
+  const ticker = sy?.ticker || val?.financials?.ticker || q;
+  const sector = sy?.sector || val?.financials?.sector || "—";
+  const price  = sy?.current_price || val?.financials?.current_price || 0;
+  const mcap   = sy?.market_cap || (val ? (val.financials?.current_price || 0) * (val.financials?.shares_outstanding || 0) : 0);
+  const market = sy?.inputs?.market || "—";
+
+  // ─── SY 결과 ────────────────────────────────────────────────
+  const syBlock = sy ? `
+    <div class="card analysis-block">
+      <h3>SY 평가법 <span class="muted" style="font-size:11px">／ 3접근법 통합</span></h3>
+      <table class="kpi-table">
+        <tr><td>수익가치 (min/mid/max)</td>
+            <td class="right">${fmt.bigKrw(sy.income_min)} / <b>${fmt.bigKrw(sy.income_mid)}</b> / ${fmt.bigKrw(sy.income_max)}</td></tr>
+        <tr><td>자산가치 (min/mid/max)</td>
+            <td class="right">${fmt.bigKrw(sy.asset_min)} / <b>${fmt.bigKrw(sy.asset_mid)}</b> / ${fmt.bigKrw(sy.asset_max)}</td></tr>
+        <tr><td>상대가치 (min/mid/max)</td>
+            <td class="right">${fmt.bigKrw(sy.market_min)} / <b>${fmt.bigKrw(sy.market_mid)}</b> / ${fmt.bigKrw(sy.market_max)}</td></tr>
+        <tr class="separator"><td>기업가치 mid</td><td class="right"><b>${fmt.bigKrw(sy.enterprise_mid)}</b></td></tr>
+        <tr><td>적정가 mid</td><td class="right"><b>${fmt.krw(sy.fair_price_mid)}</b></td></tr>
+        <tr><td>상승률 mid</td><td class="right ${sy.upside_mid >= 0 ? 'pos' : 'neg'}"><b>${fmt.pct(sy.upside_mid)}</b></td></tr>
+        <tr><td>등급</td><td class="right"><span class="rating-tag rating-${(sy.rating||'').toLowerCase()}">${sy.rating || '-'}</span></td></tr>
+      </table>
+    </div>
+  ` : `<div class="card analysis-block muted">SY 평가법 응답 실패</div>`;
+
+  // ─── 다중모델 결과 ────────────────────────────────────────
+  let multiBlock;
+  if (val && val.valuation) {
+    const v = val.valuation;
+    const byModel = v.by_model || {};
+    const entries = Object.entries(byModel).filter(([_, vv]) => vv > 0);
+    const median = entries.length ? medianOf(entries.map(([_, vv]) => vv)) : 0;
+    multiBlock = `
+      <div class="card analysis-block">
+        <h3>다중모델 평가 <span class="muted" style="font-size:11px">／ 9개 모델 비교</span></h3>
+        <table class="kpi-table">
+          ${entries.map(([k, vv]) => `<tr><td>${modelLabel(k)}</td><td class="right">${fmt.bigKrw(vv)}</td></tr>`).join("")}
+          <tr class="separator"><td>Median</td><td class="right"><b>${fmt.bigKrw(median)}</b></td></tr>
+          <tr><td>적정주가 (가중평균)</td><td class="right"><b>${fmt.krw(v.fair_price)}</b></td></tr>
+          <tr><td>상승여력</td><td class="right ${v.upside >= 0 ? 'pos' : 'neg'}"><b>${fmt.pct(v.upside)}</b></td></tr>
+          <tr><td>등급</td><td class="right"><span class="rating-tag rating-${(v.rating||'').toLowerCase()}">${v.rating || '-'}</span></td></tr>
+        </table>
+      </div>
+    `;
+  } else {
+    multiBlock = `<div class="card analysis-block muted">다중모델 평가 응답 실패</div>`;
+  }
+
+  // ─── 비교 분석 ─────────────────────────────────────────────
+  let compareBlock = "";
+  if (sy && val && val.valuation) {
+    const syMid = sy.enterprise_mid || 0;
+    const multiMidEntries = Object.values(val.valuation.by_model || {}).filter(v => v > 0);
+    const multiMid = multiMidEntries.length ? medianOf(multiMidEntries) : 0;
+    if (syMid > 0 && multiMid > 0) {
+      const gap = (multiMid - syMid) / syMid;
+      let interp;
+      if (Math.abs(gap) < 0.20) interp = "두 모델 일치 — 신뢰도↑";
+      else if (gap > 0.50)  interp = "다중모델이 더 낙관 — SY는 자산가치 보수";
+      else if (gap < -0.50) interp = "SY가 더 낙관 — 다중모델은 수익성 보수";
+      else interp = "두 모델 격차 보통 — 모델별 가정 차이";
+      compareBlock = `
+        <div class="card">
+          <h3>📊 비교 분석</h3>
+          <div class="muted" style="margin-bottom:6px">SY mid ${fmt.bigKrw(syMid)} vs 다중모델 median ${fmt.bigKrw(multiMid)}</div>
+          <div style="font-size:13px">${escapeHtml(interp)}</div>
+        </div>
+      `;
+    }
+  }
+
+  // ─── 뉴스 감성 / 변동성 ─────────────────────────────────────
+  let sentBlock = "";
+  if (rec && rec.recommendation) {
+    const r = rec.recommendation;
+    const sentScore = (r.news_sentiment || 0);
+    const sentLabel = sentScore > 0.20 ? "긍정" : sentScore < -0.20 ? "부정" : "중립";
+    const sentCls = sentScore > 0.20 ? "pos" : sentScore < -0.20 ? "neg" : "muted";
+    sentBlock = `
+      <div class="card">
+        <h3>📰 시장 시그널</h3>
+        <div class="grid-3">
+          <div class="kpi"><div class="label">뉴스 감성</div>
+            <div class="value ${sentCls}">${(sentScore * 100).toFixed(0)}</div>
+            <div class="sub">${sentLabel} (-100 ~ +100)</div></div>
+          <div class="kpi"><div class="label">변동성 (연환산)</div>
+            <div class="value">${r.volatility_pct ? r.volatility_pct.toFixed(1) + '%' : '-'}</div>
+            <div class="sub">일간 표준편차 × √252</div></div>
+          <div class="kpi"><div class="label">호라이즌</div>
+            <div class="value">${r.horizon || '-'}</div>
+            <div class="sub">단기 / 장기 / 관망</div></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ─── 의사결정 ───────────────────────────────────────────────
+  let decBlock = "";
+  if (rec && rec.recommendation) {
+    const r = rec.recommendation;
+    decBlock = `
+      <div class="card">
+        <h3>🎯 의사결정</h3>
+        <div class="muted" style="margin-bottom:8px">호라이즌: <b>${escapeHtml(r.horizon || '-')}</b> · 액션: <b>${escapeHtml(r.action || '-')}</b> · 신뢰도: <b>${((r.confidence||0)*100).toFixed(0)}%</b></div>
+        <table class="kpi-table">
+          ${r.short_term_buy_zone   ? `<tr><td>매수 진입가</td><td class="right pos"><b>${fmt.krw(r.short_term_buy_zone)} 이하</b></td></tr>` : ""}
+          ${r.short_term_sell_zone  ? `<tr><td>매도 목표가</td><td class="right"><b>${fmt.krw(r.short_term_sell_zone)}</b></td></tr>` : ""}
+          ${r.stop_loss             ? `<tr><td>손절가</td><td class="right neg"><b>${fmt.krw(r.stop_loss)}</b></td></tr>` : ""}
+        </table>
+        ${r.long_term_thesis?.length ? `
+          <h4 style="margin-top:14px">장기 투자 사유</h4>
+          <ul class="thesis">${r.long_term_thesis.map(t => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+        ` : ""}
+        ${r.risks?.length ? `
+          <h4 style="margin-top:14px">⚠ 리스크</h4>
+          <ul class="risk-list">${r.risks.map(rk => `<li>${escapeHtml(rk)}</li>`).join("")}</ul>
+        ` : ""}
+      </div>
+    `;
+  }
+
+  // ─── 헤더 KPI ───────────────────────────────────────────────
+  const upside = sy?.upside_mid ?? val?.valuation?.upside ?? 0;
+  const fairPrice = sy?.fair_price_mid ?? val?.valuation?.fair_price ?? 0;
+  const rating = sy?.rating ?? val?.valuation?.rating ?? '-';
+
+  return `
+    <div class="grid-4">
+      <div class="kpi"><div class="label">종목</div>
+        <div class="value">${escapeHtml(name)}</div>
+        <div class="sub">${escapeHtml(ticker)} · ${escapeHtml(sector)} · ${escapeHtml(market)}</div></div>
+      <div class="kpi"><div class="label">현재가</div>
+        <div class="value">${fmt.krw(price)}</div>
+        <div class="sub">시총 ${fmt.bigKrw(mcap)}</div></div>
+      <div class="kpi"><div class="label">적정가 (SY)</div>
+        <div class="value">${fmt.krw(fairPrice)}</div>
+        <div class="sub">3접근법 통합 mid</div></div>
+      <div class="kpi"><div class="label">상승률</div>
+        <div class="value ${upside>=0?'pos':'neg'}">${fmt.pct(upside)}</div>
+        <div class="sub"><span class="rating-tag rating-${(rating||'').toLowerCase()}">${rating}</span></div></div>
+    </div>
+
+    <div class="grid-2">
+      ${syBlock}
+      ${multiBlock}
+    </div>
+
+    ${compareBlock}
+    ${sentBlock}
+    ${decBlock}
+  `;
+}
+
+// 중앙값 (다중모델 비교용)
+function medianOf(arr) {
+  if (!arr || !arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
 }
 
 // ---------- Autocomplete ----------

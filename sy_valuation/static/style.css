@@ -122,6 +122,35 @@ a:hover { color: var(--text-dim); }
   border-bottom-color: var(--text);
 }
 
+/* 04 종합 분석 — 좌-우 SY / 다중모델 블록 */
+.analysis-block { min-height: 280px; }
+.kpi-table {
+  width: 100%;
+  font-size: 13px;
+}
+.kpi-table td { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.kpi-table td.right { text-align: right; }
+.kpi-table tr.separator td { border-top: 1px solid var(--text-dim); padding-top: 10px; }
+.kpi-table tr:last-child td { border-bottom: none; }
+
+/* 투자 등급 칩 */
+.rating-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.rating-tag.rating-strong_buy   { background: rgba(34,197,94,0.20);  color: #22c55e; }
+.rating-tag.rating-buy          { background: rgba(34,197,94,0.15);  color: #22c55e; }
+.rating-tag.rating-accumulate   { background: rgba(34,197,94,0.10);  color: #22c55e; }
+.rating-tag.rating-hold         { background: rgba(156,163,175,0.20);color: #9ca3af; }
+.rating-tag.rating-reduce       { background: rgba(245,166,35,0.15); color: var(--warn); }
+.rating-tag.rating-sell         { background: rgba(245,166,35,0.20); color: var(--warn); }
+.rating-tag.rating-strong_sell  { background: rgba(239,68,68,0.20);  color: #ef4444; }
+
 /* 페이지 내부 검색폼 — 헤더와 동일 디자인 일관성 */
 .page-search {
   display: flex;
