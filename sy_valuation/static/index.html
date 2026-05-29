@@ -36,47 +36,43 @@
   </header>
 
   <nav class="topnav" id="topnav">
-    <a href="#/sy-analysis" class="nav-item" data-route="sy-analysis">00 · 기업가치분석(SY)</a>
-    <a href="#/dashboard"   class="nav-item" data-route="dashboard">01 · DASHBOARD</a>
-    <a href="#/undervalued" class="nav-item" data-route="undervalued">02 · 저평가 TOP10</a>
-    <a href="#/search"      class="nav-item" data-route="search">03 · 가치평가</a>
-    <a href="#/recommend"   class="nav-item" data-route="recommend">04 · 투자분석</a>
-    <a href="#/sy-screener" class="nav-item" data-route="sy-screener">05 · SY 평가법</a>
-    <a href="#/sy-detail"   class="nav-item" data-route="sy-detail">06 · SY 가치평가</a>
-    <a href="#/news"        class="nav-item" data-route="news">07 · 토픽뉴스</a>
+    <a href="#/dashboard" class="nav-item" data-route="dashboard">01 · DASHBOARD</a>
+    <a href="#/sy"        class="nav-item" data-route="sy">02 · 기업가치평가(SY)</a>
+    <a href="#/multi"     class="nav-item" data-route="multi">03 · 다중모델 평가</a>
+    <a href="#/analysis"  class="nav-item" data-route="analysis">04 · 종합 분석</a>
+    <a href="#/news"      class="nav-item" data-route="news">05 · 토픽뉴스</a>
   </nav>
 
   <div class="layout">
     <nav class="sidebar">
-      <a href="#/sy-analysis" class="nav-item" data-route="sy-analysis">00 · 기업가치분석(SY)</a>
-      <a href="#/dashboard"   class="nav-item" data-route="dashboard">01 · DASHBOARD</a>
-      <a href="#/undervalued" class="nav-item" data-route="undervalued">02 · 저평가 TOP10</a>
-      <a href="#/search"      class="nav-item" data-route="search">03 · 기업가치평가</a>
-      <a href="#/recommend"   class="nav-item" data-route="recommend">04 · 투자분석</a>
-      <a href="#/sy-screener" class="nav-item" data-route="sy-screener">05 · SY 평가법</a>
-      <a href="#/sy-detail"   class="nav-item" data-route="sy-detail">06 · SY 가치평가</a>
-      <a href="#/news"        class="nav-item" data-route="news">07 · 토픽뉴스</a>
+      <a href="#/dashboard" class="nav-item" data-route="dashboard">01 · DASHBOARD</a>
+      <a href="#/sy"        class="nav-item" data-route="sy">02 · 기업가치평가(SY)</a>
+      <a href="#/multi"     class="nav-item" data-route="multi">03 · 다중모델 평가</a>
+      <a href="#/analysis"  class="nav-item" data-route="analysis">04 · 종합 분석</a>
+      <a href="#/news"      class="nav-item" data-route="news">05 · 토픽뉴스</a>
       <div class="legend">
-        <h4>VALUATION MODELS</h4>
+        <h4>SY 평가법 (3접근법)</h4>
         <ul>
-          <li>DCF · 잉여현금흐름</li>
-          <li>RIM · 잔여이익</li>
+          <li>수익가치 · DCF + EBITDA/OP 멀티플</li>
+          <li>자산가치 · BV + 청산 + NAV + NNWC</li>
+          <li>상대가치 · PER/PBR/PSR/EV-EBITDA</li>
+        </ul>
+        <h4>다중모델 (9-모델)</h4>
+        <ul>
+          <li>DCF · RIM · Graham # · Lynch</li>
           <li>PER · PBR · PSR · EV/EBITDA</li>
-          <li>Graham # / 본질가치</li>
-          <li>Lynch · PEG=1</li>
         </ul>
         <h4>DATA SOURCES</h4>
         <ul>
-          <li>Naver Finance (KR)</li>
-          <li>Yahoo Finance (Global)</li>
-          <li>DART OpenAPI (옵션)</li>
-          <li>Bing News RSS</li>
-          <li>YouTube RSS</li>
+          <li>DART OpenAPI · 정식 재무</li>
+          <li>Naver Finance · 가격/시총 실시간</li>
+          <li>Yahoo Finance · 해외 종목</li>
+          <li>Bing News · 뉴스 감성</li>
         </ul>
         <h4>SYSTEMS · NOMINAL</h4>
         <ul>
           <li>BUILD 2026.05</li>
-          <li>v3.4.1</li>
+          <li>v4.0 · 5-page</li>
         </ul>
       </div>
     </nav>
