@@ -48,6 +48,18 @@ _ROOT = Path(__file__).resolve().parent
 _STATIC = _ROOT / "static"
 
 
+# DART 정식 재무제표로 덮어쓸 필드. sample_financials 의 부족분을 보강.
+# 모든 한국 6자리 종목에 적용 (sample 유무와 무관) — Option A.
+DART_OVERLAY_FIELDS = (
+    "revenue", "operating_income", "net_income", "ebitda", "fcf",
+    "total_assets", "total_liabilities", "total_equity", "net_debt",
+    "current_assets", "tangible_assets", "intangible_assets",
+    "inventory", "receivables", "investment_assets", "cash_equivalents",
+    # WACC/FCFF 정통 공식용 (commit 2d5dc82)
+    "depreciation", "capex", "tax_expense", "interest_expense",
+)
+
+
 class App:
     def __init__(self):
         self.repo = FinancialsRepository()
@@ -208,10 +220,7 @@ class App:
                         raw = {"ticker": ticker, "name": name, "sector": sector,
                                "current_price": 0, "shares_outstanding": 0,
                                "market_cap": 0, "growth_rate": 0.05}
-                    for k in ("revenue", "operating_income", "net_income", "ebitda", "fcf",
-                             "total_assets", "total_liabilities", "total_equity", "net_debt",
-                             "current_assets", "tangible_assets", "intangible_assets",
-                             "inventory", "receivables", "investment_assets", "cash_equivalents"):
+                    for k in DART_OVERLAY_FIELDS:
                         if dart_raw.get(k):
                             raw[k] = dart_raw[k]
                     raw["_dart_year"] = dart_raw.get("_dart_year")
@@ -224,6 +233,34 @@ class App:
                     "suggestions": self.repo.search(query, limit=5),
                     "hint": "Naver Finance / DART 에서 데이터를 가져오지 못했습니다.",
                 }
+
+        # sample 종목도 DART 키 있으면 자산/부채/세부 항목 덮어쓰기 (정확도 격상)
+        # sample_financials.json 에 자산 세부 항목이 없는 종목 (예: 삼성전자)이 부채 0 등으로
+        # 왜곡되는 문제 해결. DART 응답은 24h 캐시 — 동일 종목 재호출 시 즉시 lookup.
+        if (raw and not raw.get("_dart_year") and getattr(self.dart, "enabled", False)):
+            tk = raw.get("ticker", "")
+            if tk.isdigit() and len(tk) == 6:
+                try:
+                    cache = get_cache()
+                    cache_key = f"dart:partial:{tk}"
+                    cached = cache.get(cache_key)
+                    if cached:
+                        dart_extra = cached[0]
+                    else:
+                        dart_extra = self.dart.latest_partial_financials(
+                            tk, raw["name"], raw.get("sector", "기타"))
+                        if dart_extra:
+                            cache.set(cache_key, dart_extra, ttl_sec=86400, source="dart")
+                    if dart_extra:
+                        raw = dict(raw)
+                        for k in DART_OVERLAY_FIELDS:
+                            if dart_extra.get(k):
+                                raw[k] = dart_extra[k]
+                        raw["_dart_year"] = dart_extra.get("_dart_year")
+                        raw["_source"] = (raw.get("_source") or "sample") + "+dart"
+                except Exception:
+                    pass
+
         # 비-샘플 종목은 DART universe 캐시에서 섹터 보강 (피어 매칭용)
         if not raw.get("sector") or raw.get("sector") == "기타":
             try:
