@@ -237,10 +237,25 @@ async function renderSyPage(root, params) {
 }
 
 async function renderMultiPage(root, params) {
-  // C4 에서 탭 (단일 / TOP10) 컨테이너로 확장 예정.
   const tab = params.tab || "single";
-  if (tab === "screener") return renderUndervalued(root);
-  return renderSearch(root, params);
+  root.innerHTML = `
+    <div class="page-tabs">
+      <button class="tab ${tab==='single'?'active':''}" data-tab="single">단일 종목 (9-모델)</button>
+      <button class="tab ${tab==='screener'?'active':''}" data-tab="screener">저평가 TOP10</button>
+    </div>
+    <div id="multiTabContent"></div>
+  `;
+  $$('.page-tabs .tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.tab;
+      const next = { ...params, tab: t };
+      if (t === 'single') delete next.tab;
+      navigate('/multi', next);
+    });
+  });
+  const content = $('#multiTabContent');
+  if (tab === 'screener') return renderUndervalued(content);
+  return renderSearch(content, params);
 }
 
 async function renderAnalysisPage(root, params) {
