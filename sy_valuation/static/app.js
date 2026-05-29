@@ -1,10 +1,15 @@
 // SY Valuation — vanilla JS SPA
-// Routes:
-//   #/dashboard
-//   #/undervalued
-//   #/search?q=<query>
-//   #/recommend?q=<query>
-//   #/news
+// Routes (재구성 후 5개 페이지):
+//   #/dashboard          — 01 DASHBOARD
+//   #/sy?q=<>&tab=<>     — 02 기업가치평가(SY)  (tab: single | screener)
+//   #/multi?q=<>&tab=<>  — 03 다중모델 평가     (tab: single | screener)
+//   #/analysis?q=<>      — 04 종합 분석 (SY + 다중모델 + 추천)
+//   #/news               — 05 토픽뉴스
+//
+// 레거시 라우트 (자동 redirect):
+//   #/sy-analysis, #/sy-detail, #/sy-screener  → #/sy
+//   #/search, #/undervalued                    → #/multi
+//   #/recommend                                → #/analysis
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
@@ -166,19 +171,65 @@ function setActiveNav(route) {
   }
 }
 
+// 레거시 → 신규 라우트 매핑 (북마크 / 외부 링크 호환)
+const LEGACY_REDIRECT = {
+  "/sy-analysis":  "/sy",
+  "/sy-detail":    "/sy",
+  "/sy-screener":  { path: "/sy",       extraParams: { tab: "screener" } },
+  "/search":       "/multi",
+  "/undervalued":  { path: "/multi",    extraParams: { tab: "screener" } },
+  "/recommend":    "/analysis",
+};
+
 async function render() {
   const { path, params } = parseRoute();
   const root = $("#content");
-  if (path.startsWith("/dashboard"))   { setActiveNav("dashboard");   return renderDashboard(root); }
-  if (path.startsWith("/sy-analysis")) { setActiveNav("sy-analysis"); return renderSyAnalysis(root, params); }
-  if (path.startsWith("/undervalued")) { setActiveNav("undervalued"); return renderUndervalued(root); }
-  if (path.startsWith("/search"))      { setActiveNav("search");      return renderSearch(root, params); }
-  if (path.startsWith("/recommend"))   { setActiveNav("recommend");   return renderRecommend(root, params); }
-  if (path.startsWith("/sy-screener")) { setActiveNav("sy-screener"); return renderSyScreener(root); }
-  if (path.startsWith("/sy-detail"))   { setActiveNav("sy-detail");   return renderSyDetail(root, params); }
-  if (path.startsWith("/news"))        { setActiveNav("news");        return renderNews(root); }
-  if (path.startsWith("/analytics"))   { setActiveNav("analytics");   return renderAnalytics(root); }
+
+  // 1) 레거시 라우트 → 신규로 redirect
+  for (const [legacy, target] of Object.entries(LEGACY_REDIRECT)) {
+    if (path.startsWith(legacy)) {
+      const newPath = typeof target === "string" ? target : target.path;
+      const newParams = typeof target === "string"
+        ? params
+        : { ...params, ...target.extraParams };
+      return navigate(newPath, newParams);
+    }
+  }
+
+  // 2) 신규 라우트
+  if (path.startsWith("/dashboard")) { setActiveNav("dashboard"); return renderDashboard(root); }
+  if (path.startsWith("/sy"))        { setActiveNav("sy");        return renderSyPage(root, params); }
+  if (path.startsWith("/multi"))     { setActiveNav("multi");     return renderMultiPage(root, params); }
+  if (path.startsWith("/analysis"))  { setActiveNav("analysis");  return renderAnalysisPage(root, params); }
+  if (path.startsWith("/news"))      { setActiveNav("news");      return renderNews(root); }
+
+  // 3) 관리자 페이지 (라우트 변경 없음)
+  if (path.startsWith("/analytics")) { setActiveNav("analytics"); return renderAnalytics(root); }
+
   root.innerHTML = `<div class="error">알 수 없는 페이지: ${path}</div>`;
+}
+
+// ─── 새 페이지 컨테이너 (C2 stub — C3~C5 에서 탭/통합 본구현) ──────────
+
+async function renderSyPage(root, params) {
+  // C3 에서 탭 (단일 / 스크리너) 컨테이너로 확장 예정.
+  // 현재는 단일 종목 (기존 renderSyAnalysis) 그대로 호출 — 회귀 없음.
+  const tab = params.tab || "single";
+  if (tab === "screener") return renderSyScreener(root);
+  return renderSyAnalysis(root, params);
+}
+
+async function renderMultiPage(root, params) {
+  // C4 에서 탭 (단일 / TOP10) 컨테이너로 확장 예정.
+  const tab = params.tab || "single";
+  if (tab === "screener") return renderUndervalued(root);
+  return renderSearch(root, params);
+}
+
+async function renderAnalysisPage(root, params) {
+  // C5 에서 SY + 다중모델 + 추천 통합 페이지로 신규 구현 예정.
+  // 현재는 기존 renderRecommend (구 04) 그대로.
+  return renderRecommend(root, params);
 }
 
 // ---------- Autocomplete ----------
