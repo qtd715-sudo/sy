@@ -168,6 +168,29 @@ class FinancialsRepository:
     def all(self) -> list[dict[str, Any]]:
         return list(self._companies)
 
+    def peer_universe(self, dart_connector: Any = None) -> list[dict[str, Any]]:
+        """피어 매칭용 universe: 샘플 54개 + DART KRX 전종목.
+
+        샘플 항목이 ticker 중복 시 우선 (자세한 재무 데이터 보유).
+        DART universe 는 주 1회 배치로 빌드되며, 캐시 부재 시 샘플만 반환.
+        """
+        merged: dict[str, dict[str, Any]] = {}
+        # 1) DART universe (있으면) — 섹터/시장만 채워진 가벼운 엔트리
+        if dart_connector is not None:
+            try:
+                for t in dart_connector.load_universe_cache():
+                    tk = t.get("ticker")
+                    if tk:
+                        merged[tk] = dict(t)
+            except Exception:
+                pass
+        # 2) 샘플 (전체 재무 데이터 보유) — 항상 우선
+        for c in self._companies:
+            tk = c.get("ticker")
+            if tk:
+                merged[tk] = dict(c)
+        return list(merged.values())
+
     def to_financials(self, raw: dict[str, Any]) -> Financials:
         s = self._sectors.get(raw["sector"], {})
         return Financials(

@@ -14,7 +14,7 @@ from .sy_method import (
     SyInputs, calculate_wacc, calculate_growth_rate,
     CAPM_RF, CAPM_BETA_DEFAULT, CAPM_MRP, CORPORATE_TAX_RATE,
 )
-from .peers import select_peers, compute_peer_multiples, peer_summary
+from .peers import select_peers, compute_peer_multiples, peer_summary, enrich_peers_with_naver
 
 
 # 섹터별 베타 (DART 미수집 시 폴백 값. Yahoo β 받아오면 그것 우선).
@@ -34,10 +34,14 @@ def build_inputs_from_raw(
     raw: dict[str, Any],
     sector_multiples: dict[str, float],
     universe: list[dict[str, Any]] | None = None,
+    naver_fetcher: Any = None,
+    cache: Any = None,
 ) -> SyInputs:
     """sample_financials 의 raw dict (회사 1건) → SyInputs.
 
     universe 가 주어지면 자동 피어 선정 (같은 섹터 + 비슷한 매출 규모).
+    naver_fetcher 가 주어지면 피어 후보 중 재무 데이터 부재 항목을
+    Naver fundamentals 로 lazy enrich (캐시 24h TTL).
     """
     name = raw["name"]
     sector = raw["sector"]
@@ -70,6 +74,12 @@ def build_inputs_from_raw(
     auto_mults: dict[str, float] = {}
     if universe and not raw.get("peers"):
         auto_peers = select_peers(raw, universe)
+        # 후보가 DART-only (재무 데이터 없음) 이면 Naver 로 보강
+        if naver_fetcher and any(
+            float(p.get("current_price", 0) or 0) <= 0 or float(p.get("bps", 0) or 0) <= 0
+            for p in auto_peers
+        ):
+            auto_peers = enrich_peers_with_naver(auto_peers, naver_fetcher, cache=cache)
         auto_mults = compute_peer_multiples(auto_peers)
 
     def _pick(key_user: str, key_auto: str, default_key: str, default_value: float) -> float:

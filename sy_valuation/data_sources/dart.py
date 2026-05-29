@@ -306,3 +306,92 @@ class DartConnector:
         if res.get("status") != "000":
             return []
         return res.get("list", [])
+
+    # ── 전체 상장사 universe 빌더 (피어 매칭용) ───────────────────────────
+
+    def fetch_company_info(self, stock_code: str) -> dict[str, Any] | None:
+        """단일 상장사의 기본 정보 (업종코드, 시장구분)."""
+        if not self._corp_map:
+            self.load_corp_codes()
+        corp = self._corp_map.get(stock_code)
+        if not corp:
+            return None
+        try:
+            res = self._get("company.json", corp_code=corp)
+        except Exception:
+            return None
+        if res.get("status") != "000":
+            return None
+        return res
+
+    def build_listed_universe(
+        self,
+        max_workers: int = 5,
+        log_progress: bool = False,
+    ) -> list[dict[str, Any]]:
+        """KRX 전 상장사 universe 빌더 (주 1회 배치).
+
+        corp_codes 매핑(약 2,500개) 을 돌며 company.json 호출 →
+        ticker, name, induty_code(KSIC), 시장구분 추출 → sample 섹터 라벨로 매핑.
+
+        결과는 data/cache/dart_universe.json 에 저장. 7일 TTL.
+        병렬 5-worker 로 약 3~4분 소요. DART rate-limit (~20,000 req/day) 한도 내.
+        """
+        import concurrent.futures
+        from .dart_sectors import map_induty
+
+        if not self.enabled:
+            return []
+        if not self._corp_map:
+            self.load_corp_codes()
+
+        # corp_cls: Y=유가증권(KOSPI), K=코스닥, N=코넥스, E=기타
+        MARKET_MAP = {"Y": "KOSPI", "K": "KOSDAQ", "N": "KONEX", "E": "ETC"}
+
+        stock_codes = list(self._corp_map.keys())
+        total = len(stock_codes)
+        results: list[dict[str, Any]] = []
+
+        def fetch_one(stock: str) -> dict[str, Any] | None:
+            info = self.fetch_company_info(stock)
+            if not info:
+                return None
+            cls = info.get("corp_cls", "")
+            # 코스피/코스닥만 (코넥스/비상장 제외)
+            if cls not in ("Y", "K"):
+                return None
+            induty = (info.get("induty_code") or "").strip()
+            return {
+                "ticker": stock,
+                "name": (info.get("corp_name") or "").strip(),
+                "induty_code": induty,
+                "sector": map_induty(induty),
+                "market": MARKET_MAP.get(cls, "ETC"),
+            }
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+            for i, row in enumerate(ex.map(fetch_one, stock_codes)):
+                if row:
+                    results.append(row)
+                if log_progress and (i + 1) % 200 == 0:
+                    print(f"  DART universe progress: {i+1}/{total} ({len(results)} valid)")
+
+        # 캐시 파일 저장 (scheduler 가 7일 주기로 갱신)
+        cache_path = _CACHE_DIR / "dart_universe.json"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(
+            json.dumps({"tickers": results}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return results
+
+    def load_universe_cache(self) -> list[dict[str, Any]]:
+        """캐시 파일에서 universe 로드 (없으면 빈 리스트)."""
+        cache_path = _CACHE_DIR / "dart_universe.json"
+        if not cache_path.exists():
+            return []
+        try:
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
+            return data.get("tickers", [])
+        except Exception:
+            return []

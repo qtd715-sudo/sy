@@ -190,6 +190,7 @@ class App:
                     if price > 0 and shares > 0:
                         raw = {
                             "ticker": ticker, "name": name, "sector": sector,
+                            "market": meta.get("exchange", ""),
                             "current_price": price, "shares_outstanding": shares,
                             "eps": eps, "bps": bps, "sps": 0, "dps": div,
                             "roe": (eps / bps) if bps > 0 else 0.0,
@@ -223,6 +224,18 @@ class App:
                     "suggestions": self.repo.search(query, limit=5),
                     "hint": "Naver Finance / DART 에서 데이터를 가져오지 못했습니다.",
                 }
+        # 비-샘플 종목은 DART universe 캐시에서 섹터 보강 (피어 매칭용)
+        if not raw.get("sector") or raw.get("sector") == "기타":
+            try:
+                tk = raw.get("ticker")
+                for u in self.dart.load_universe_cache():
+                    if u.get("ticker") == tk:
+                        raw = dict(raw)
+                        raw["sector"] = u.get("sector") or raw.get("sector", "기타")
+                        raw["market"] = u.get("market", "")
+                        break
+            except Exception:
+                pass
         sectors = self.repo.sector_table()
         sector_mults = sectors.get(raw.get("sector", ""), {})
         try:
@@ -234,8 +247,11 @@ class App:
                     raw["market_cap"] = q.price * raw["shares_outstanding"]
         except Exception:
             pass
-        universe = self.repo.all()
-        inp = build_inputs_from_raw(raw, sector_mults, universe=universe)
+        universe = self.repo.peer_universe(dart_connector=self.dart)
+        inp = build_inputs_from_raw(
+            raw, sector_mults, universe=universe,
+            naver_fetcher=self.naver, cache=get_cache(),
+        )
         result = evaluate_sy(inp)
         out = result.to_dict()
         if raw.get("_live"):

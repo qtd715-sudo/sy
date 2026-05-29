@@ -136,14 +136,44 @@ class Scheduler:
             log.warning("DART corp_codes refresh failed: %s", e)
             return 0
 
+    def _job_dart_universe(self) -> int:
+        """KRX 전 상장사 섹터/시장 매핑 빌더 (주 1회).
+
+        DART /api/company.json 을 corp_codes 약 2,500건에 대해 호출.
+        5-worker 병렬, 약 3~4분 소요. 결과는 data/cache/dart_universe.json 에 저장.
+        피어 매칭용 universe 확장에 사용.
+
+        부팅 시 호출되면 캐시 파일 mtime 이 7일 이내일 때 스킵 — 서버 재시작마다
+        3~4분 빈 호출을 막기 위함.
+        """
+        try:
+            if not self.app.dart.enabled:
+                return 0
+            from pathlib import Path
+            cache_path = Path(__file__).resolve().parent / "data" / "cache" / "dart_universe.json"
+            if cache_path.exists():
+                age_sec = time.time() - cache_path.stat().st_mtime
+                if age_sec < 604800:  # 7일 이내면 재빌드 스킵
+                    cached = self.app.dart.load_universe_cache()
+                    log.info("DART universe cache fresh (%.1fh, %d entries) — skip rebuild",
+                             age_sec / 3600, len(cached))
+                    return len(cached)
+            items = self.app.dart.build_listed_universe(max_workers=5)
+            log.info("refreshed DART universe: %d listed companies", len(items))
+            return len(items)
+        except Exception as e:
+            log.warning("DART universe refresh failed: %s", e)
+            return 0
+
     # -------- loop --------
 
     SCHEDULE = [
-        ("news",     3600,   "_job_news"),            # 1시간
-        ("market",   300,    "_job_market"),          # 5분
-        ("hot",      300,    "_job_hot_tickers"),     # 5분 — 샘플+핫 종목 가격 (스크리너용)
-        ("krx_univ", 86400,  "_job_krx_universe"),    # 24시간 — 코스피/코스닥 전종목
-        ("dart_cc",  604800, "_job_dart_corpcodes"),  # 7일 — DART corp_code 매핑 (DART_API_KEY 필요)
+        ("news",      3600,   "_job_news"),             # 1시간
+        ("market",    300,    "_job_market"),           # 5분
+        ("hot",       300,    "_job_hot_tickers"),      # 5분 — 샘플+핫 종목 가격 (스크리너용)
+        ("krx_univ",  86400,  "_job_krx_universe"),     # 24시간 — 코스피/코스닥 전종목 (Naver)
+        ("dart_cc",   604800, "_job_dart_corpcodes"),   # 7일 — DART corp_code 매핑
+        ("dart_univ", 604800, "_job_dart_universe"),    # 7일 — KRX 전종목 섹터/시장 (피어 매칭용)
     ]
 
     def _loop(self) -> None:
