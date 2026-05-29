@@ -212,11 +212,28 @@ async function render() {
 // ─── 새 페이지 컨테이너 (C2 stub — C3~C5 에서 탭/통합 본구현) ──────────
 
 async function renderSyPage(root, params) {
-  // C3 에서 탭 (단일 / 스크리너) 컨테이너로 확장 예정.
-  // 현재는 단일 종목 (기존 renderSyAnalysis) 그대로 호출 — 회귀 없음.
   const tab = params.tab || "single";
-  if (tab === "screener") return renderSyScreener(root);
-  return renderSyAnalysis(root, params);
+  // 탭 헤더 + 콘텐츠 컨테이너
+  root.innerHTML = `
+    <div class="page-tabs">
+      <button class="tab ${tab==='single'?'active':''}" data-tab="single">단일 종목</button>
+      <button class="tab ${tab==='screener'?'active':''}" data-tab="screener">TOP10 스크리너</button>
+    </div>
+    <div id="syTabContent"></div>
+  `;
+  // 탭 클릭 시 URL 갱신 (tab 파라미터)
+  $$('.page-tabs .tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.tab;
+      const next = { ...params, tab: t };
+      // single 일 땐 tab 파라미터 생략 (깔끔한 URL)
+      if (t === 'single') delete next.tab;
+      navigate('/sy', next);
+    });
+  });
+  const content = $('#syTabContent');
+  if (tab === 'screener') return renderSyScreener(content);
+  return renderSyAnalysis(content, params);
 }
 
 async function renderMultiPage(root, params) {

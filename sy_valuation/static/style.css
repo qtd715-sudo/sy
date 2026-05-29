@@ -95,6 +95,33 @@ a:hover { color: var(--text-dim); }
 }
 .search-wrap button:hover { background: var(--accent-2); }
 
+/* 페이지 내 탭 (02 SY / 03 다중모델 페이지에서 단일/스크리너 전환) */
+.page-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  margin: 0 0 20px 0;
+}
+.page-tabs .tab {
+  padding: 12px 24px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.page-tabs .tab:hover { color: var(--text); }
+.page-tabs .tab.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
 /* 페이지 내부 검색폼 — 헤더와 동일 디자인 일관성 */
 .page-search {
   display: flex;
