@@ -324,6 +324,25 @@ class DartConnector:
             return None
         return res
 
+    @staticmethod
+    def _fetch_naver_market_cap(stock_code: str, timeout: int = 5) -> float:
+        """Naver polling API 로 시가총액 가져오기 (배치용).
+
+        polling.finance.naver.com — DART OpenAPI 와 무관, 별도 호출.
+        실패 시 0 반환 (피어 매칭에서 size_proxy 폴백).
+        """
+        try:
+            url = f"https://polling.finance.naver.com/api/realtime/domestic/stock/{stock_code}"
+            with urllib.request.urlopen(url, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            d = (data.get("datas") or [None])[0]
+            if not d:
+                return 0.0
+            mcap = float(d.get("marketValueFullRaw") or 0)
+            return mcap
+        except Exception:
+            return 0.0
+
     def build_listed_universe(
         self,
         max_workers: int = 5,
@@ -331,11 +350,13 @@ class DartConnector:
     ) -> list[dict[str, Any]]:
         """KRX 전 상장사 universe 빌더 (주 1회 배치).
 
-        corp_codes 매핑(약 2,500개) 을 돌며 company.json 호출 →
-        ticker, name, induty_code(KSIC), 시장구분 추출 → sample 섹터 라벨로 매핑.
+        corp_codes 매핑(약 2,500개) 을 돌며 다음 데이터 수집:
+        - DART company.json: induty_code(KSIC), 시장구분
+        - Naver polling: 시가총액 (피어 size_proxy 용)
 
         결과는 data/cache/dart_universe.json 에 저장. 7일 TTL.
-        병렬 5-worker 로 약 3~4분 소요. DART rate-limit (~20,000 req/day) 한도 내.
+        병렬 5-worker 로 약 5~7분 소요 (DART + Naver 2회 호출 / 종목).
+        DART rate-limit (~20,000 req/day) 한도 내.
         """
         import concurrent.futures
         from .dart_sectors import map_induty
@@ -361,12 +382,15 @@ class DartConnector:
             if cls not in ("Y", "K"):
                 return None
             induty = (info.get("induty_code") or "").strip()
+            # 시총 — Naver polling (DART 와 무관, 별도 호출)
+            mcap = self._fetch_naver_market_cap(stock)
             return {
                 "ticker": stock,
                 "name": (info.get("corp_name") or "").strip(),
                 "induty_code": induty,
                 "sector": map_induty(induty),
                 "market": MARKET_MAP.get(cls, "ETC"),
+                "market_cap": mcap,
             }
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:

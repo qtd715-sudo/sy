@@ -10,25 +10,44 @@ from __future__ import annotations
 from typing import Any
 
 
+def _size_proxy(c: dict[str, Any]) -> float:
+    """규모 추정값 — revenue 우선, 없으면 market_cap, 그래도 없으면 price×shares.
+
+    피어 사이즈 매칭의 핵심 지표.
+    sample 항목은 revenue 보유 / DART universe 항목은 market_cap 보유 (Option A 배치).
+    """
+    r = float(c.get("revenue", 0) or 0)
+    if r > 0:
+        return r
+    mc = float(c.get("market_cap", 0) or 0)
+    if mc > 0:
+        return mc
+    price = float(c.get("current_price", 0) or 0)
+    shares = float(c.get("shares_outstanding", 0) or 0)
+    if price > 0 and shares > 0:
+        return price * shares
+    return 0.0
+
+
 def select_peers(
     target: dict[str, Any],
     universe: list[dict[str, Any]],
-    revenue_band: tuple[float, float] = (0.3, 3.0),  # 0.3x ~ 3x
+    size_band: tuple[float, float] = (0.3, 3.0),  # 0.3x ~ 3x
     min_peers: int = 3,
     max_peers: int = 8,
 ) -> list[dict[str, Any]]:
-    """타겟과 같은 섹터 + 비슷한 매출 규모 기업.
+    """타겟과 같은 섹터 + 비슷한 규모 기업.
 
-    유사도 1순위: 같은 섹터.
-    필터: 매출액이 target 의 (revenue_band) 배 안.
-    부족하면 매출 밴드를 점진적으로 넓혀 min_peers 충족.
+    유사도 1순위: 같은 섹터 (KSIC 세분화 라벨 — '응용SW', '시스템통합' 등).
+    규모 매칭: size_proxy (revenue → market_cap → price×shares) 가 size_band 안.
+    부족하면 거리 가까운 순으로 폴백.
     """
     target_sector = target.get("sector", "")
-    target_rev = float(target.get("revenue", 0) or 0)
+    target_size = _size_proxy(target)
     target_ticker = target.get("ticker")
     target_market = target.get("market", "")
 
-    # 같은 섹터 후보 (revenue 0 도 허용 — DART universe 항목은 revenue 미보유)
+    # 같은 섹터 후보
     same_sector = [
         c for c in universe
         if c.get("sector") == target_sector
@@ -46,37 +65,34 @@ def select_peers(
     if not same_sector:
         return []
 
-    # revenue 보유 후보와 비보유 후보 분리
-    with_rev = [c for c in same_sector if float(c.get("revenue", 0) or 0) > 0]
-    without_rev = [c for c in same_sector if float(c.get("revenue", 0) or 0) <= 0]
+    # size 보유 후보와 비보유 후보 분리
+    with_size = [(c, _size_proxy(c)) for c in same_sector if _size_proxy(c) > 0]
+    without_size = [c for c in same_sector if _size_proxy(c) <= 0]
 
-    # target 매출이 0 이면 섹터 후보 그대로 (with_rev 우선, 부족분 without_rev)
-    if target_rev <= 0:
-        out = with_rev[:max_peers]
+    # target size 가 0 이면 섹터 후보 그대로 (size 보유 우선)
+    if target_size <= 0:
+        out = [c for c, _ in with_size[:max_peers]]
         if len(out) < max_peers:
-            out += without_rev[: max_peers - len(out)]
+            out += without_size[: max_peers - len(out)]
         return out
 
-    # 매출 밴드 내 기업
-    lo, hi = revenue_band
-    in_band = [
-        c for c in with_rev
-        if lo * target_rev <= float(c.get("revenue", 0) or 0) <= hi * target_rev
-    ]
+    # size 밴드 내 기업
+    lo, hi = size_band
+    in_band = [c for c, s in with_size if lo * target_size <= s <= hi * target_size]
 
-    # 부족하면 밴드 확장 — with_rev 에서 매출 거리 가까운 순
-    if len(in_band) < min_peers and with_rev:
-        with_rev_sorted = sorted(with_rev, key=lambda c: abs(float(c.get("revenue", 0) or 0) - target_rev))
-        in_band = with_rev_sorted[: max(min_peers, max_peers)]
+    # 부족하면 밴드 확장 — with_size 에서 거리 가까운 순
+    if len(in_band) < min_peers and with_size:
+        sorted_pool = sorted(with_size, key=lambda cs: abs(cs[1] - target_size))
+        in_band = [c for c, _ in sorted_pool[: max(min_peers, max_peers)]]
 
-    # 그래도 부족하면 without_rev (DART-only) 로 충당
+    # 그래도 부족하면 without_size (size 미보유) 로 충당 — 그래도 같은 섹터 우선
     if len(in_band) < min_peers:
-        in_band = in_band + without_rev[: max_peers - len(in_band)]
+        in_band = in_band + without_size[: max_peers - len(in_band)]
 
-    # 매출 거리 가까운 순으로 정렬 후 max_peers 제한 (revenue 없는 항목은 뒤로)
+    # size 거리 가까운 순으로 정렬 후 max_peers 제한 (size 없는 항목은 뒤로)
     in_band.sort(key=lambda c: (
-        0 if float(c.get("revenue", 0) or 0) > 0 else 1,
-        abs(float(c.get("revenue", 0) or 0) - target_rev),
+        0 if _size_proxy(c) > 0 else 1,
+        abs(_size_proxy(c) - target_size),
     ))
     return in_band[:max_peers]
 
