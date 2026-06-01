@@ -122,6 +122,27 @@ a:hover { color: var(--text-dim); }
   border-bottom-color: var(--text);
 }
 
+/* Accordion toggle — 02 단일 탭의 상세 모델별 펼침 영역 */
+.accordion-toggle {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 8px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+.accordion-toggle:hover {
+  background: var(--bg-elev-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.accordion-body { margin-top: 12px; }
+
 /* 04 종합 분석 — 좌-우 SY / 다중모델 블록 */
 .analysis-block { min-height: 280px; }
 .kpi-table {

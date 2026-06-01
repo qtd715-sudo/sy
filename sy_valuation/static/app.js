@@ -1027,6 +1027,7 @@ async function loadSyAnalysis(q) {
     }
     out.innerHTML = renderSyAnalysisContent(d) +
       asOfLine("평가 기준일", d.price_as_of || Date.now(), "재무 DART 2025-12 · 자동 피어 멀티플");
+    attachAccordionToggles(out);
   } catch (e) {
     out.innerHTML = `<div class="card error">${e.message}</div>`;
   }
@@ -1135,10 +1136,14 @@ function renderSyAnalysisContent(d) {
             </tr>
           </tbody>
         </table>
-        <div class="muted" style="margin-top:8px;font-size:12px">
-          상세 모델별 산출 내역은 <a href="#/sy-detail?q=${encodeURIComponent(d.ticker)}">06 · SY 가치평가</a>에서 확인.
+        <div style="margin-top:12px">
+          <button class="accordion-toggle" data-target="#syDetailExpand">▼ 상세 모델별 산출 내역 + 피어 비교군 보기</button>
         </div>
       </div>
+    </div>
+
+    <div id="syDetailExpand" class="accordion-body" style="display:none">
+      ${renderSyDetailSections(d)}
     </div>
 
     <div class="card">
@@ -1167,6 +1172,80 @@ function renderSyAnalysisContent(d) {
       </div>
     </div>
   `;
+}
+
+// ---------- SY ANALYSIS — 상세 펼침 영역 (02 단일 탭 accordion) ----------
+// renderSyAnalysisContent 의 "▼ 상세 모델별 산출 내역" 버튼을 누르면 펼쳐지는 영역.
+// 모델별 산출 + 피어 비교군 — renderSyDetailContent 에서 가져옴 (KPI/요약은 위에 이미 있어 생략).
+function renderSyDetailSections(d) {
+  const inp = d.inputs || {};
+  const peers = inp.peers || [];
+  return `
+    <div class="grid-2">
+      <div class="card">
+        <h3>모델별 산출 내역</h3>
+        <table>
+          <thead><tr><th>접근법</th><th>방법</th><th class="text-right">기업가치</th></tr></thead>
+          <tbody>
+          ${(d.detail_rows || []).map(r => `
+            <tr class="no-hover">
+              <td class="muted">${escapeHtml(r.approach)}</td>
+              <td>${escapeHtml(r.method)}</td>
+              <td><strong>${bigKrwAuto(r.value)}</strong></td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+        ${(d.notes || []).length ? `<div class="muted" style="margin-top:8px">${d.notes.join(" / ")}</div>` : ""}
+      </div>
+
+      <div class="card">
+        <h3>피어 비교군 (상대가치 산출 기준)</h3>
+        <table>
+          <thead><tr><th>피어</th><th>섹터</th><th>PER</th><th>PBR</th></tr></thead>
+          <tbody>
+          ${peers.length ? peers.map(p => `
+            <tr class="no-hover">
+              <td>${escapeHtml(p.name || '')}</td>
+              <td class="muted">${escapeHtml(p.sector || '-')}</td>
+              <td>${p.per ?? '-'}</td>
+              <td>${p.pbr ?? '-'}</td>
+            </tr>
+          `).join("") : `<tr class="no-hover"><td colspan="4" class="muted">개별 피어 정보 없음 — 섹터 평균 멀티플 사용</td></tr>`}
+            <tr class="no-hover" style="background:var(--bg-elev-2)">
+              <td><strong>피어 평균 (사용값)</strong></td>
+              <td class="muted">—</td>
+              <td><strong>${inp.peer_per_avg?.toFixed(2) || '-'}</strong></td>
+              <td><strong>${inp.peer_pbr_avg?.toFixed(2) || '-'}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="background:var(--bg-elev-2);font-size:12px">
+      <h3 style="font-size:13px;margin-bottom:8px">투자 등급 기준</h3>
+      <p class="muted" style="margin:0">
+        STRONG_BUY ≥ +30% · BUY +15~30% · ACCUMULATE +5~15% · HOLD ±5% ·
+        REDUCE -15~-5% · SELL -30~-15% · STRONG_SELL ≤ -30%
+      </p>
+    </div>
+  `;
+}
+
+// 페이지 어디서든 .accordion-toggle 클릭 시 data-target 요소 펼침/접힘.
+function attachAccordionToggles(scope) {
+  (scope || document).querySelectorAll(".accordion-toggle").forEach(btn => {
+    if (btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => {
+      const sel = btn.dataset.target;
+      const tgt = sel && document.querySelector(sel);
+      if (!tgt) return;
+      const open = tgt.style.display !== "none";
+      tgt.style.display = open ? "none" : "block";
+      btn.textContent = (open ? "▼ " : "▲ ") + btn.textContent.replace(/^[▼▲]\s*/, "");
+    });
+  });
 }
 
 // ---------- SY SCREENER ----------
