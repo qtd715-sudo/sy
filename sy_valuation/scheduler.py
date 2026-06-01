@@ -165,6 +165,28 @@ class Scheduler:
             log.warning("DART universe refresh failed: %s", e)
             return 0
 
+    def _job_full_screener(self) -> int:
+        """전종목 저평가 스크리너 배치.
+
+        기본 비활성 — 운영(Render 무료)은 GitHub Actions 가 만든 캐시 파일을 서빙만 한다.
+        (무료 플랜은 15분 미사용 시 잠들고 재시작 시 디스크가 휘발돼 36분 배치 완주 불가.)
+        서버가 직접 배치를 돌리려면 SY_ENABLE_SCREENER_BATCH=1 로 명시 활성화.
+        """
+        if os.environ.get("SY_ENABLE_SCREENER_BATCH") not in ("1", "true", "True"):
+            return 0
+        try:
+            from .recommender import full_screener
+            age = full_screener.cache_age_sec()
+            if age is not None and age < 14400:  # 4시간 이내면 스킵
+                log.info("full screener cache fresh (%.1fh) — skip rebuild", age / 3600)
+                return 0
+            summary = self.app.build_full_screener(max_workers=10)
+            log.info("full screener built: %s", summary)
+            return summary.get("count_sy", 0)
+        except Exception as e:
+            log.warning("full screener build failed: %s", e)
+            return 0
+
     # -------- loop --------
 
     SCHEDULE = [
@@ -174,6 +196,7 @@ class Scheduler:
         ("krx_univ",  86400,  "_job_krx_universe"),     # 24시간 — 코스피/코스닥 전종목 (Naver)
         ("dart_cc",   604800, "_job_dart_corpcodes"),   # 7일 — DART corp_code 매핑
         ("dart_univ", 604800, "_job_dart_universe"),    # 7일 — KRX 전종목 섹터/시장 (피어 매칭용)
+        ("screener",  14400,  "_job_full_screener"),    # 4시간 — 전종목 저평가 스크리너 배치
     ]
 
     def _loop(self) -> None:

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stock Navigator — 홈 프로토타입</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&family=Google+Sans:wght@400;500;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  /* ───── Caid 디자인 토큰 (오션 네이비 리테마) ───── */
+  :root {
+    --color-primary-default:    #1F4E9C;   /* ocean blue */
+    --color-primary-deep:       #13315F;   /* navy (brand) */
+    --color-primary-on:         #FFFFFF;
+    --color-primary-container:  #DCE6FB;
+    --color-primary-on-container:#0D1B3D;
+
+    --color-surface-base:       #F6F8FB;
+    --color-surface-container:  #FFFFFF;
+    --color-surface-variant:    #E4E8F0;
+    --color-border-variant:     #D5DBE6;
+
+    --color-text-primary:       #16202E;
+    --color-text-secondary:     #475061;
+    --color-text-disabled:      #95A0B2;
+
+    --color-ai-accent:          #5B46D6;
+    --color-ai-surface:         #ECE8FF;
+    --color-ai-border:          #C5BFEE;
+
+    /* 시세 등락 — 한국 관례(상승 빨강 / 하락 파랑) */
+    --color-up:                 #D63A2E;
+    --color-down:               #1F5BD6;
+
+    --font-display: 'Google Sans','Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+    --font-body:    'Roboto','Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; height:100%; }
+  body {
+    background:#11151c;
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-body); color:var(--color-text-primary);
+    -webkit-font-smoothing:antialiased;
+  }
+  .material-symbols-outlined {
+    font-family:'Material Symbols Outlined'!important; font-weight:normal; font-style:normal;
+    line-height:1; letter-spacing:normal; text-transform:none; display:inline-block;
+    white-space:nowrap; direction:ltr; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga';
+    user-select:none;
+  }
+  .noscroll::-webkit-scrollbar { display:none; }
+  .noscroll { scrollbar-width:none; }
+
+  /* ───── iOS 프레임 ───── */
+  .device {
+    position:relative; width:390px; height:844px;
+    background:var(--color-surface-base);
+    border-radius:54px; overflow:hidden;
+    box-shadow:0 0 0 12px #1c2330, 0 0 0 14px #2a3342, 0 30px 80px rgba(0,0,0,.6);
+  }
+  .notch {
+    position:absolute; top:11px; left:50%; transform:translateX(-50%);
+    width:120px; height:34px; background:#000; border-radius:999px; z-index:50;
+  }
+  .statusbar {
+    position:absolute; top:0; left:0; right:0; height:54px; z-index:40;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 28px; font-family:var(--font-display); font-weight:600; font-size:15px;
+    color:var(--color-text-primary);
+  }
+  .statusbar .right { display:flex; gap:6px; align-items:center; }
+  .screen { position:absolute; inset:0; padding-top:54px; padding-bottom:84px; display:flex; flex-direction:column; }
+  .scroll { flex:1; overflow-y:auto; }
+
+  /* ───── 브랜드 헤더 ───── */
+  .brandbar {
+    display:flex; align-items:center; justify-content:space-between;
+    height:52px; padding:8px 16px;
+  }
+  .logo { display:inline-flex; align-items:center; gap:9px; }
+  .logo-mark {
+    width:32px; height:32px; border-radius:10px;
+    background:linear-gradient(135deg,#1F4E9C 0%,#13315F 100%);
+    color:#fff; display:inline-flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 6px rgba(19,49,95,.35);
+    position:relative;
+  }
+  .logo-mark .sail {
+    position:absolute; right:-3px; bottom:-3px; width:15px; height:15px; border-radius:999px;
+    background:#fff; color:#1F4E9C; display:inline-flex; align-items:center; justify-content:center;
+    border:1.5px solid var(--color-surface-base);
+  }
+  .wordmark { font-family:var(--font-display); font-weight:700; font-size:18px; letter-spacing:-.02em; color:var(--color-primary-deep); }
+  .wordmark .nav { color:var(--color-primary-default); }
+  .iconbtn {
+    position:relative; width:40px; height:40px; border:none; background:transparent; border-radius:12px;
+    cursor:pointer; color:var(--color-text-primary);
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+  .iconbtn .dot { position:absolute; top:9px; right:9px; width:8px; height:8px; border-radius:999px; background:var(--color-up); border:1.5px solid #fff; }
+
+  /* ───── 검색 ───── */
+  .search {
+    margin:4px 16px 8px; height:44px; padding:0 14px; border-radius:12px;
+    background:#fff; border:1px solid var(--color-border-variant);
+    display:flex; align-items:center; gap:8px; color:var(--color-text-disabled);
+    box-shadow:0 1px 2px rgba(15,23,42,.04); font-size:14px;
+  }
+
+  /* ───── 빠른 메뉴 ───── */
+  .quick { display:grid; grid-template-columns:repeat(4,1fr); gap:16px 4px; padding:8px 12px 4px; }
+  .qbtn { display:flex; flex-direction:column; align-items:center; gap:6px; background:none; border:none; cursor:pointer; padding:6px 2px; font-family:inherit; }
+  .qicon { width:52px; height:52px; border-radius:16px; display:inline-flex; align-items:center; justify-content:center; }
+  .qlabel { font-size:11.5px; font-weight:500; color:var(--color-text-primary); letter-spacing:-.01em; }
+
+  /* tone tiles */
+  .t-blue  { background:#E3EBFB; color:#1F4E9C; }
+  .t-teal  { background:#D7F0EE; color:#0B6E4F; }
+  .t-amber { background:#FFF1D6; color:#7A4400; }
+  .t-purple{ background:#ECE8FF; color:#5B46D6; }
+  .t-pink  { background:#FCE4EC; color:#C2185B; }
+  .t-green { background:#E2F4E8; color:#1A5C2F; }
+  .t-red   { background:#FCE8E6; color:#8B1010; }
+  .t-navy  { background:#DCE6FB; color:#13315F; }
+
+  /* ───── AI 진입 카드 ───── */
+  .ai-card {
+    margin:8px 16px 4px; padding:14px 16px; width:calc(100% - 32px);
+    background:var(--color-ai-surface); border:1px solid var(--color-ai-border); border-radius:16px;
+    display:flex; align-items:center; gap:12px; cursor:pointer; text-align:left; font-family:inherit;
+  }
+  .ai-icon { width:44px; height:44px; border-radius:12px; background:#fff; color:var(--color-ai-accent); border:1px solid var(--color-ai-border); display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .badge { display:inline-flex; align-items:center; height:22px; padding:0 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .badge.ai { background:var(--color-ai-surface); color:var(--color-ai-accent); }
+  .badge.primary { background:var(--color-primary-container); color:var(--color-primary-on-container); }
+  .badge.up { background:#FCE8E6; color:#8B1010; }
+  .badge.hot { background:#FCE8E6; color:#8B1010; }
+
+  /* ───── 섹션 헤더 ───── */
+  .sec { display:flex; align-items:flex-end; justify-content:space-between; padding:20px 20px 12px; }
+  .sec .eyebrow { font-size:12px; font-weight:600; color:var(--color-primary-default); margin-bottom:4px; }
+  .sec .title { font-family:var(--font-display); font-size:20px; font-weight:700; letter-spacing:-.01em; line-height:1.25; }
+  .sec .more { display:inline-flex; align-items:center; gap:2px; background:none; border:none; cursor:pointer; color:var(--color-text-secondary); font-size:13px; font-weight:500; font-family:inherit; }
+
+  /* ───── AI 요약 가로 카드 ───── */
+  .hscroll { display:flex; gap:12px; padding:0 16px 8px; overflow-x:auto; }
+  .summary-card {
+    flex:0 0 230px; background:#fff; border:1px solid var(--color-border-variant); border-radius:14px;
+    padding:14px; text-align:left;
+  }
+  .summary-card .head { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+  .summary-card .ai-label { font-size:11px; font-weight:600; color:var(--color-ai-accent); }
+  .ticker-row { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+  .ticker-name { font-family:var(--font-display); font-size:15px; font-weight:600; letter-spacing:-.01em; }
+  .ticker-code { font-size:11px; color:var(--color-text-disabled); }
+  .summary-text { font-size:12px; color:var(--color-text-secondary); line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+
+  /* ───── 저평가 Top 리스트 ───── */
+  .list { padding:0 16px 8px; display:flex; flex-direction:column; gap:10px; }
+  .rank-item {
+    display:flex; align-items:center; gap:12px; padding:12px;
+    background:#fff; border:1px solid var(--color-border-variant); border-radius:14px;
+    cursor:pointer; text-align:left; font-family:inherit; width:100%;
+  }
+  .rank-num { width:26px; height:26px; border-radius:8px; background:var(--color-primary-deep); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex-shrink:0; }
+  .rank-body { flex:1; min-width:0; }
+  .row-mid { display:flex; align-items:center; gap:6px; margin:2px 0; }
+  .price { font-family:var(--font-display); font-size:14px; font-weight:600; }
+  .chg-up { color:var(--color-up); font-size:12px; font-weight:600; }
+  .chg-down { color:var(--color-down); font-size:12px; font-weight:600; }
+  .upside { text-align:right; flex-shrink:0; }
+  .upside .pct { font-family:var(--font-display); font-size:17px; font-weight:700; color:#1A5C2F; letter-spacing:-.02em; }
+  .upside .cap { font-size:10.5px; color:var(--color-text-disabled); }
+  .gauge { height:5px; border-radius:999px; background:var(--color-surface-variant); overflow:hidden; margin-top:6px; }
+  .gauge > i { display:block; height:100%; background:linear-gradient(90deg,#1F4E9C,#0B6E4F); border-radius:999px; }
+
+  /* ───── 시황 뉴스 ───── */
+  .news { padding:0 20px 24px; }
+  .news-item { display:flex; align-items:center; gap:10px; padding:14px 0; border-bottom:1px solid var(--color-surface-variant); }
+  .news-item:last-child { border-bottom:none; }
+  .news-title { flex:1; font-size:13.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .news-date { font-size:11.5px; color:var(--color-text-disabled); flex-shrink:0; }
+
+  /* ───── 하단 탭바 ───── */
+  .tabbar {
+    position:absolute; left:0; right:0; bottom:0; height:84px; padding-bottom:20px;
+    display:grid; grid-template-columns:repeat(4,1fr);
+    background:rgba(255,255,255,.96); backdrop-filter:saturate(180%) blur(10px);
+    border-top:1px solid var(--color-surface-variant); z-index:30;
+  }
+  .tab { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; background:none; border:none; cursor:pointer; color:var(--color-text-disabled); font-family:inherit; }
+  .tab.active { color:var(--color-primary-default); }
+  .tab span.lbl { font-size:10px; font-weight:500; letter-spacing:-.01em; }
+  .tab.active span.lbl { font-weight:600; }
+
+  .caption { position:fixed; left:24px; bottom:24px; color:#6b7688; font-family:var(--font-display); font-size:13px; max-width:240px; }
+  .caption b { color:#cdd5e1; }
+</style>
+</head>
+<body>
+  <div class="caption"><b>Stock Navigator</b> — 홈 화면 프로토타입<br/>Caid 디자인 시스템(오션 네이비 리테마)</div>
+
+  <div class="device">
+    <div class="notch"></div>
+    <div class="statusbar">
+      <span>9:41</span>
+      <span class="right">
+        <span class="material-symbols-outlined" style="font-size:17px">signal_cellular_alt</span>
+        <span class="material-symbols-outlined" style="font-size:17px">wifi</span>
+        <span class="material-symbols-outlined" style="font-size:19px">battery_full</span>
+      </span>
+    </div>
+
+    <div class="screen">
+      <!-- 브랜드 헤더 -->
+      <div class="brandbar">
+        <div class="logo">
+          <span class="logo-mark">
+            <span class="material-symbols-outlined" style="font-size:22px;font-variation-settings:'FILL' 1">explore</span>
+            <span class="sail"><span class="material-symbols-outlined" style="font-size:11px;font-variation-settings:'FILL' 1">sailing</span></span>
+          </span>
+          <span class="wordmark">Stock <span class="nav">Navigator</span></span>
+        </div>
+        <div style="display:flex">
+          <button class="iconbtn"><span class="material-symbols-outlined">tune</span></button>
+          <button class="iconbtn"><span class="material-symbols-outlined">notifications</span><span class="dot"></span></button>
+        </div>
+      </div>
+
+      <div class="scroll noscroll">
+        <!-- 검색 -->
+        <div class="search">
+          <span class="material-symbols-outlined" style="font-size:20px">search</span>
+          <span>종목명·티커로 검색 (예: 삼성전자, 005930)</span>
+        </div>
+
+        <!-- 빠른 메뉴 -->
+        <div class="quick">
+          <button class="qbtn"><span class="qicon t-navy"><span class="material-symbols-outlined" style="font-size:26px;font-variation-settings:'FILL' 1">calculate</span></span><span class="qlabel">가치평가</span></button>
+          <button class="qbtn"><span class="qicon t-green"><span class="material-symbols-outlined" style="font-size:26px;font-variation-settings:'FILL' 1">trending_down</span></span><span class="qlabel">저평가 Top</span></button>
+          <button class="qbtn"><span class="qicon t-purple"><span class="material-symbols-outlined" style="font-size:26px;font-variation-settings:'FILL' 1">auto_awesome</span></span><span class="qlabel">AI 추천</span></button>
+          <button class="qbtn"><span class="qicon t-amber"><span class="material-symbols-outlined" style="font-size:26px;font-variation-settings:'FILL' 1">star</span></span><span class="qlabel">관심종목</span></button>
+          <button class="qbtn"><span class="qicon t-blue"><span class="material-symbols-outlined" style="font-size:26px;font-variation-settings:'FILL' 1">account_balance_wallet</span></span><span class="qlabel">포트폴리오</span></button>
+          <button class="qbtn"><span class="qicon t-pink"><span class="material-symbols-outlined" style="font-size:26px;font-variation-settings:'FILL' 1">newspaper</span></span><span class="qlabel">시장뉴스</span></button>
+          <button class="qbtn"><span class="qicon t-teal"><span class="material-symbols-outlined" style="font-size:26px;font-variation-settings:'FILL' 1">oil_barrel</span></span><span class="qlabel">원자재·지수</span></button>
+          <button class="qbtn"><span class="qicon t-red"><span class="material-symbols-outlined" style="font-size:26px;font-variation-settings:'FILL' 1">compare_arrows</span></span><span class="qlabel">종목비교</span></button>
+        </div>
+
+        <!-- AI 진입 카드 -->
+        <button class="ai-card">
+          <span class="ai-icon"><span class="material-symbols-outlined" style="font-size:22px;font-variation-settings:'FILL' 1">auto_awesome</span></span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+              <span class="badge ai">AI 밸류에이션</span>
+              <span style="font-size:11px;color:var(--color-text-secondary)">9개 모델 + SY 평가법</span>
+            </div>
+            <div style="font-family:var(--font-display);font-size:15px;font-weight:600;letter-spacing:-.01em">1분이면 끝! AI 적정주가 진단</div>
+            <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">종목과 평가법만 고르면 돼요</div>
+          </div>
+          <span class="material-symbols-outlined" style="font-size:22px;color:var(--color-text-disabled)">chevron_right</span>
+        </button>
+
+        <!-- AI 요약 가로 카드 -->
+        <div class="sec">
+          <div>
+            <div class="eyebrow">AI 요약</div>
+            <div class="title">AI가 방금<br/>종목 리포트를 요약했어요</div>
+          </div>
+          <button class="more">전체보기 <span class="material-symbols-outlined" style="font-size:18px">chevron_right</span></button>
+        </div>
+        <div class="hscroll noscroll">
+          <div class="summary-card">
+            <div class="head"><span class="material-symbols-outlined" style="font-size:14px;color:var(--color-ai-accent);font-variation-settings:'FILL' 1">auto_awesome</span><span class="ai-label">밸류에이션 요약</span></div>
+            <div class="ticker-row"><span class="ticker-name">삼성전자</span><span class="ticker-code">005930</span></div>
+            <div class="summary-text">DCF·PER·PBR 다수 모델에서 적정가가 현재가를 상회. 메모리 업황 반등이 핵심 변수로 가장 자주 언급돼요.</div>
+          </div>
+          <div class="summary-card">
+            <div class="head"><span class="material-symbols-outlined" style="font-size:14px;color:var(--color-ai-accent);font-variation-settings:'FILL' 1">auto_awesome</span><span class="ai-label">밸류에이션 요약</span></div>
+            <div class="ticker-row"><span class="ticker-name">엠로</span><span class="ticker-code">058970</span></div>
+            <div class="summary-text">SaaS 전환에 따른 매출 성장 기대. 다만 PSR 기준 밸류 부담이 있다는 신중론도 함께 나와요.</div>
+          </div>
+          <div class="summary-card">
+            <div class="head"><span class="material-symbols-outlined" style="font-size:14px;color:var(--color-ai-accent);font-variation-settings:'FILL' 1">auto_awesome</span><span class="ai-label">밸류에이션 요약</span></div>
+            <div class="ticker-row"><span class="ticker-name">SK하이닉스</span><span class="ticker-code">000660</span></div>
+            <div class="summary-text">HBM 수요 강세로 이익 추정치 상향. 사이클 고점 우려 대비 현재 멀티플은 합리적이라는 평가.</div>
+          </div>
+        </div>
+
+        <!-- 저평가 Top -->
+        <div class="sec">
+          <div>
+            <div class="eyebrow">월간 저평가 Top 30</div>
+            <div class="title">적정가 대비 저평가 종목</div>
+          </div>
+          <button class="more">전체보기 <span class="material-symbols-outlined" style="font-size:18px">chevron_right</span></button>
+        </div>
+        <div class="list">
+          <button class="rank-item">
+            <span class="rank-num">1</span>
+            <div class="rank-body">
+              <div style="display:flex;gap:4px;margin-bottom:4px"><span class="badge primary">반도체</span><span class="badge hot">HOT</span></div>
+              <div class="ticker-row"><span class="ticker-name">삼성전자</span><span class="ticker-code">005930</span></div>
+              <div class="row-mid"><span class="price">71,200</span><span class="chg-up">▲ 1,300 (1.86%)</span></div>
+              <div class="gauge"><i style="width:78%"></i></div>
+            </div>
+            <div class="upside"><div class="pct">+34%</div><div class="cap">적정가 95,400</div></div>
+          </button>
+          <button class="rank-item">
+            <span class="rank-num">2</span>
+            <div class="rank-body">
+              <div style="display:flex;gap:4px;margin-bottom:4px"><span class="badge primary">소프트웨어</span></div>
+              <div class="ticker-row"><span class="ticker-name">엠로</span><span class="ticker-code">058970</span></div>
+              <div class="row-mid"><span class="price">38,500</span><span class="chg-down">▼ 450 (1.15%)</span></div>
+              <div class="gauge"><i style="width:62%"></i></div>
+            </div>
+            <div class="upside"><div class="pct">+27%</div><div class="cap">적정가 48,900</div></div>
+          </button>
+          <button class="rank-item">
+            <span class="rank-num">3</span>
+            <div class="rank-body">
+              <div style="display:flex;gap:4px;margin-bottom:4px"><span class="badge primary">플랫폼</span></div>
+              <div class="ticker-row"><span class="ticker-name">NAVER</span><span class="ticker-code">035420</span></div>
+              <div class="row-mid"><span class="price">182,400</span><span class="chg-up">▲ 2,100 (1.16%)</span></div>
+              <div class="gauge"><i style="width:55%"></i></div>
+            </div>
+            <div class="upside"><div class="pct">+21%</div><div class="cap">적정가 220,700</div></div>
+          </button>
+        </div>
+
+        <!-- 시황 뉴스 -->
+        <div class="sec">
+          <div>
+            <div class="eyebrow">오늘의 시황</div>
+            <div class="title">놓치면 아쉬운 시장 소식</div>
+          </div>
+          <button class="more">더보기 <span class="material-symbols-outlined" style="font-size:18px">chevron_right</span></button>
+        </div>
+        <div class="news">
+          <div class="news-item"><span class="badge up">호재</span><div class="news-title">반도체 업황 반등 신호, 외국인 순매수 전환</div><span class="news-date">5월 31일</span></div>
+          <div class="news-item"><span class="badge primary">금리</span><div class="news-title">美 연준 동결 시사 — 코스피 2,800 회복 시도</div><span class="news-date">5월 30일</span></div>
+          <div class="news-item"><span class="badge" style="background:var(--color-surface-variant);color:var(--color-text-secondary)">환율</span><div class="news-title">원/달러 1,370원대 — 수출주 수혜 전망</div><span class="news-date">5월 29일</span></div>
+        </div>
+        <div style="height:12px"></div>
+      </div>
+    </div>
+
+    <!-- 하단 탭바 -->
+    <div class="tabbar">
+      <button class="tab active"><span class="material-symbols-outlined" style="font-size:24px;font-variation-settings:'FILL' 1">home</span><span class="lbl">홈</span></button>
+      <button class="tab"><span class="material-symbols-outlined" style="font-size:24px">explore</span><span class="lbl">탐색</span></button>
+      <button class="tab"><span class="material-symbols-outlined" style="font-size:24px">account_balance_wallet</span><span class="lbl">포트폴리오</span></button>
+      <button class="tab"><span class="material-symbols-outlined" style="font-size:24px">star</span><span class="lbl">관심종목</span></button>
+    </div>
+  </div>
+</body>
+</html>

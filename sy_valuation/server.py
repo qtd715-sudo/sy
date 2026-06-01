@@ -154,7 +154,20 @@ class App:
                     out[t] = float(data["price"])
         return out
 
+    def build_full_screener(self, limit: int | None = None, max_workers: int = 10):
+        """전종목 배치 평가 → 캐시 저장 (스케줄러/수동 트리거가 호출)."""
+        from .recommender import full_screener
+        import logging
+        log = logging.getLogger("sy.screener").info
+        return full_screener.build_cache(self, max_workers=max_workers, limit=limit, log=log)
+
     def undervalued(self, n: int = 10, strict: bool = True) -> list[dict[str, Any]]:
+        # 1순위: 전종목 배치 캐시 (즉시 응답). 없으면 샘플 기반으로 폴백.
+        from .recommender import full_screener
+        cached = full_screener.top_9model(n)
+        if cached is not None:
+            return cached
+
         financials = self.repo.all_financials()
         prices = self._refresh_prices([f.ticker for f in financials])
         for f in financials:
@@ -309,6 +322,12 @@ class App:
         피어 멀티플(PER/PBR/PSR/EV-EBITDA) 산정에는 sample 데이터의 정적 가격 사용.
         이유: 피어까지 라이브로 끌어올리면 멀티플이 부풀려져 적정가가 비현실적으로 커짐.
         """
+        # 1순위: 전종목 배치 캐시 (즉시 응답). 없으면 샘플 기반으로 폴백.
+        from .recommender import full_screener
+        cached = full_screener.top_sy(n)
+        if cached is not None:
+            return cached
+
         out: list[dict[str, Any]] = []
         sectors = self.repo.sector_table()
         universe = self.repo.all()  # 원본 sample — 피어 멀티플 계산용 (변하지 않음)

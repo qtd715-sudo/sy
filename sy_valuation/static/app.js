@@ -670,10 +670,10 @@ async function renderUndervalued(root) {
   root.innerHTML = `
     <h1 class="page-title">저평가 Top 10<span class="muted">／ 9-MODEL WEIGHTED FAIR PRICE</span></h1>
     ${metaStrip('§02·SCREENER', 'DCF · RIM · MULTIPLES', 'GRAHAM · LYNCH', 'QUANT FILTER')}
-    <p class="page-sub">9개 모델 가중평균 적정주가 vs 현재가 디스카운트. 정량 필터(ROE ≥ 5% · 흑자 · 부채) 통과 + 종합 점수 정렬.</p>
+    <p class="page-sub">9개 모델 가중평균 적정주가 vs 현재가 디스카운트. 정량 필터(ROE ≥ 5% · 흑자 · 부채) 통과 + 상승여력(Upside) 높은 순 정렬.</p>
     <div class="card">
       <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
-        <span class="muted">정확평가가 가능한 한국 블루칩 표본 기반. DART 연동 시 실제 재무로 자동 교체됨.</span>
+        <span class="muted">KOSPI · KOSDAQ 보통주 전종목 기준 · 4시간마다 자동 갱신 (미리 계산된 결과를 즉시 표시).</span>
         <button onclick="reloadUnder()" style="margin-left:auto;padding:6px 12px;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--line);border-radius:6px;cursor:pointer">새로고침</button>
       </div>
       <div id="undertable" class="loading">불러오는 중…</div>
@@ -685,7 +685,7 @@ async function renderUndervalued(root) {
         <li>ROE ≥ 5% (자본효율성 확보)</li>
         <li>당기순이익 흑자</li>
         <li>순부채/EBITDA ≤ 4 (재무 건전성)</li>
-        <li>점수 = 0.6×Upside + 0.2×ROE + 0.2×(1 − PBR/섹터PBR)</li>
+        <li>정렬 = 상승여력(Upside) 높은 순 (점수 컬럼은 참고용)</li>
       </ul>
     </div>
   `;
@@ -744,13 +744,10 @@ async function renderSearch(root, params) {
     <h1 class="page-title">기업 가치 평가<span class="muted">／ EQUITY VALUATION</span></h1>
     ${metaStrip('§03·VALUATION', 'KOSPI · KOSDAQ · US · ETF', 'AUTO-COMPLETE', '9 MODELS')}
     <p class="page-sub">국내/해외 주식 + ETF. 자동완성 검색 → 9개 모델 분포 + 가중평균 적정주가. 비샘플 종목은 Naver/Yahoo 실시간 데이터로 평가.</p>
-    <div class="card">
-      <form id="searchForm" style="display:flex;gap:8px;position:relative">
-        <input id="qInp" type="text" value="${escapeHtml(q)}" placeholder="삼성전자, AAPL, QQQ, 005930 …" autocomplete="off"
-          style="flex:1;padding:10px 12px;background:var(--bg-elev-2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px">
-        <button type="submit" style="padding:10px 20px;background:var(--accent);color:#00322e;border:none;border-radius:6px;cursor:pointer;font-weight:600">평가</button>
-      </form>
-    </div>
+    <form id="searchForm" class="page-search">
+      <input id="qInp" type="text" value="${escapeHtml(q)}" placeholder="🔍 삼성전자, AAPL, QQQ, 005930 …" autocomplete="off">
+      <button type="submit">평가</button>
+    </form>
     <div id="searchResult"></div>
   `;
   const inp = $("#qInp");
@@ -982,15 +979,12 @@ async function renderSyAnalysis(root, params) {
     ${metaStrip('§00·SY-ANALYSIS', 'CAPM · WACC · DCF', 'OPENDART · NAVER · YAHOO', '7-TIER RATING')}
     <p class="page-sub">기업명 / 종목코드 입력 → OpenDart(재무) + 네이버 금융 + Yahoo Finance에서 자동 데이터 수집 → CAPM 자기자본비용 + WACC + DCF + 자산·상대가치 → 오늘 기준 투자 등급 산출.</p>
 
-    <div class="card">
-      <form id="syaForm" style="display:flex;gap:8px;position:relative">
-        <input id="syaInp" type="text" value="${escapeHtml(q)}" placeholder="🔍 기업명 또는 종목코드 — 예: 삼성전자, 엠로, 005930" autocomplete="off"
-          style="flex:1;padding:12px 14px;background:var(--bg-elev-2);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:14px">
-        <button type="submit" style="padding:12px 24px;background:var(--accent);color:#00322e;border:none;border-radius:6px;cursor:pointer;font-weight:600">🔄 자동 평가</button>
-      </form>
-      <div class="muted" style="margin-top:8px;font-size:12px">
-        사용자 입력 → 재무·주가·베타 자동 수집 → CAPM/WACC/DCF/자산/상대가치 자동 계산 → 오늘 기준 투자 판단 출력
-      </div>
+    <form id="syaForm" class="page-search">
+      <input id="syaInp" type="text" value="${escapeHtml(q)}" placeholder="🔍 기업명 또는 종목코드 — 예: 삼성전자, 엠로, 005930" autocomplete="off">
+      <button type="submit">평가</button>
+    </form>
+    <div class="muted" style="margin:-8px 0 16px;font-size:12px">
+      사용자 입력 → 재무·주가·베타 자동 수집 → CAPM/WACC/DCF/자산/상대가치 자동 계산 → 오늘 기준 투자 판단 출력
     </div>
 
     <div id="syaResult"></div>
@@ -1261,7 +1255,7 @@ async function renderSyScreener(root) {
   root.innerHTML = `
     <h1 class="page-title">SY 평가법 저평가<span class="muted">／ 3-APPROACH SCREENER</span></h1>
     ${metaStrip('§05·SY-METHOD', 'INCOME · ASSET · MARKET', 'AUTO PEER GROUP', 'MIN / MID / MAX')}
-    <p class="page-sub">수익가치 + 자산가치 + 상대가치 3접근법으로 기업가치 범위(min/mid/max) 산출 후 시총 비교. 자동 피어 그룹(같은 섹터+매출 비슷)으로 멀티플 계산.</p>
+    <p class="page-sub">수익가치 + 자산가치 + 상대가치 3접근법으로 기업가치 범위(min/mid/max) 산출 후 시총 비교. 자동 피어 그룹(같은 섹터+매출 비슷)으로 멀티플 계산. <strong>KOSPI·KOSDAQ 보통주 전종목 기준 · 4시간마다 자동 갱신.</strong></p>
     <div class="card" style="background:rgba(124,92,255,0.08);border-color:rgba(124,92,255,0.3)">
       <h3>저평가 Top10 과 무엇이 다른가?</h3>
       <table>
@@ -1270,7 +1264,7 @@ async function renderSyScreener(root) {
       </table>
     </div>
     <div class="card">
-      <div class="muted" style="margin-bottom:8px">상승여력 = (종합 기업가치 중간값 − 시총) / 시총.</div>
+      <div class="muted" style="margin-bottom:8px">상승여력 = (종합 기업가치 평균값 − 시총) / 시총. 종합값 = 계산 가능한 접근법만 평균(2개면 ÷2).</div>
       <div id="sytable" class="loading">불러오는 중…</div>
     </div>
     <div class="card">
@@ -1279,7 +1273,7 @@ async function renderSyScreener(root) {
         <li><strong>수익가치</strong>: ① DCF (FCFF 10년 + 영구가치) ② EBITDA × 동종 EV/EBITDA ③ 영업이익 × 10배</li>
         <li><strong>자산가치</strong>: 자산총계 − 부채총계 (= 순자산), 청산가치 = 순자산 × 0.7</li>
         <li><strong>상대가치</strong>: ① PER × 순이익 ② PBR × 순자산 ③ PSR × 매출 ④ EV/EBITDA × EBITDA − 순부채</li>
-        <li><strong>종합</strong>: 3접근법의 min / median / max → 시총 비교</li>
+        <li><strong>종합</strong>: 계산된 접근법만 평균(2개면 ÷2) → mid, 범위는 min / max → 시총 비교</li>
       </ul>
     </div>
   `;

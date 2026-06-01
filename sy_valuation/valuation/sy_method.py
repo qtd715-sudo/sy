@@ -427,13 +427,16 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
     market_max = max(market_vals) if market_vals else 0.0
     market_mid = statistics.median(market_vals) if market_vals else 0.0
 
-    # 종합: 3접근법의 min/mid/max 묶음 (자산은 새 min/mid/max 범위 사용)
+    # 종합: 3접근법(수익·자산·상대)의 묶음.
+    # 종합 적정가(mid)는 "계산 가능한 접근법만 평균" — 3개면 ÷3, 2개면 ÷2, 1개면 그대로.
     all_mins = [v for v in (income_min, asset_lo, market_min) if v > 0]
     all_mids = [v for v in (income_mid, asset_md, market_mid) if v > 0]
     all_maxs = [v for v in (income_max, asset_hi, market_max) if v > 0]
     enterprise_min = min(all_mins) if all_mins else 0.0
-    enterprise_mid = statistics.median(all_mids) if all_mids else 0.0
+    enterprise_mid = statistics.mean(all_mids) if all_mids else 0.0
     enterprise_max = max(all_maxs) if all_maxs else 0.0
+    if all_mids:
+        notes.append(f"종합 적정가: {len(all_mids)}개 접근법 평균 (÷{len(all_mids)})")
 
     mcap = max(inp.market_cap, 1.0)
     upside_min = (enterprise_min - mcap) / mcap

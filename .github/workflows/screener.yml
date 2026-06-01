@@ -1,0 +1,47 @@
+name: 전종목 스크리너 캐시 갱신
+
+# 회사망에서 DART(opendart) 가 막히므로, 실제 정확평가는 여기(클린 네트워크)에서 수행한다.
+# 4시간마다 전종목 평가 → data/screener_cache.json 커밋 → Render 자동 재배포(서빙만).
+
+on:
+  schedule:
+    - cron: '5 */4 * * *'      # 4시간마다 (UTC 기준)
+  workflow_dispatch: {}          # 수동 실행 버튼 (Actions 탭에서)
+
+permissions:
+  contents: write                # 캐시 파일 커밋/푸시 권한
+
+concurrency:
+  group: screener-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 전종목 배치 실행 (DART 연동)
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          SCREENER_WORKERS: '12'
+          PYTHONUNBUFFERED: '1'
+          PYTHONIOENCODING: 'utf-8'
+        run: python -m sy_valuation.build_screener
+
+      - name: 캐시 파일 커밋 & 푸시
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add sy_valuation/data/screener_cache.json
+          if git diff --staged --quiet; then
+            echo "변경 없음 — 커밋 생략"
+          else
+            git commit -m "chore(screener): 전종목 저평가 캐시 자동 갱신"
+            git push
+          fi

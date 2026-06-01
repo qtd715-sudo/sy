@@ -74,5 +74,6 @@ def find_undervalued(
             per_now=round(f.current_price / f.eps, 2) if f.eps > 0 else 0.0,
             pbr_now=round(f.current_price / f.bps, 2) if f.bps > 0 else 0.0,
         ))
-    out.sort(key=lambda r: r.score, reverse=True)
+    # 정렬: 현재가 대비 적정가 상승율(upside) 높은 순
+    out.sort(key=lambda r: r.valuation.upside, reverse=True)
     return out[:top_n]
