@@ -110,6 +110,21 @@ class DartConnector:
         from datetime import date
         if not self.enabled:
             return None
+
+        # 24h 캐시 — 같은 종목을 9모델·SY 두 경로가 각각 호출하므로(within-run 중복)
+        # DART 콜을 종목당 2→1 로 줄여 일일 한도(20,000)를 보호한다.
+        # 성공 결과만 캐시 → 020(한도 초과)으로 None 이 나온 경우는 다음에 재시도.
+        _cache = None
+        cache_key = f"dart:partial:{stock_code}"
+        try:
+            from .cache import get_cache
+            _cache = get_cache()
+            hit = _cache.get(cache_key)
+            if hit:
+                return hit[0]
+        except Exception:
+            _cache = None
+
         # 최근 2년치 시도 (직전 회계연도 우선)
         cur_year = date.today().year
         rows: list[dict[str, Any]] = []
@@ -262,7 +277,7 @@ class DartConnector:
         if revenue <= 0 and op_inc <= 0 and net_inc <= 0:
             return None
 
-        return {
+        result = {
             "ticker": stock_code,
             "name": name,
             "sector": sector,
@@ -291,6 +306,13 @@ class DartConnector:
             "_dart_year": rows[0].get("bsns_year") if rows else "",
             "_source": "dart",
         }
+        # 성공 결과만 24h 캐시 (위 None 반환 경로는 캐시 안 함 → 한도 복구 후 재시도)
+        if _cache is not None:
+            try:
+                _cache.set(cache_key, result, ttl_sec=86400, source="dart")
+            except Exception:
+                pass
+        return result
 
     def fetch_disclosures(self, stock_code: str, page_count: int = 10) -> list[dict[str, Any]]:
         """최근 공시 목록."""

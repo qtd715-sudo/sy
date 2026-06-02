@@ -1,11 +1,15 @@
 name: 전종목 스크리너 캐시 갱신
 
 # 회사망에서 DART(opendart) 가 막히므로, 실제 정확평가는 여기(클린 네트워크)에서 수행한다.
-# 4시간마다 전종목 평가 → data/screener_cache.json 커밋 → Render 자동 재배포(서빙만).
+# 하루 2회(KST 09:00 / 14:00) 전종목 평가 → data/screener_cache.json 커밋 → Render 자동 재배포(서빙만).
 
 on:
   schedule:
-    - cron: '5 */4 * * *'      # 4시간마다 (UTC 기준)
+    # DART 무료 한도(20,000 req/일) 보호 — 1회 빌드 ≈ 3,473종목 × 종목당 DART ~2콜(9모델+SY).
+    # 4시간마다(6회/일)는 한도를 5만+/일로 초과시켜 020(사용한도 초과)→Naver 폴백을 유발했음.
+    # 하루 2회로 제한. GitHub Actions cron 은 UTC 기준 (KST = UTC + 9):
+    #   KST 09:00 → UTC 00:00,  KST 14:00 → UTC 05:00  (minute 5 = cron 지연 여유분)
+    - cron: '5 0,5 * * *'
   workflow_dispatch: {}          # 수동 실행 버튼 (Actions 탭에서)
 
 permissions:
