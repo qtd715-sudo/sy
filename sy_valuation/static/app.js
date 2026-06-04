@@ -1106,26 +1106,26 @@ function renderSyAnalysisContent(d) {
       <div class="card">
         <h3>💰 3접근법 기업가치</h3>
         <table>
-          <thead><tr><th>접근법</th><th>중간값</th><th>vs 시총</th></tr></thead>
+          <thead><tr><th>접근법</th><th>중간값 <span class="muted" style="font-weight:400">／ 주당</span></th><th>vs 시총</th></tr></thead>
           <tbody>
             <tr class="no-hover">
               <td><strong>수익가치 (DCF)</strong><div class="muted">FCFF 10y + 영구가치</div></td>
-              <td><strong>${bigKrwAuto(d.income_mid)}</strong></td>
+              <td><strong>${bigKrwAuto(d.income_mid)}</strong><div class="muted" style="font-size:11px">주당 ${perShareKrw(d.income_mid, d.shares_outstanding)}</div></td>
               <td class="${d.income_mid > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.income_mid - d.market_cap)/d.market_cap) : '-'}</td>
             </tr>
             <tr class="no-hover">
               <td><strong>자산가치</strong><div class="muted">순자산 · 청산가치 · 조정NAV</div></td>
-              <td><strong>${bigKrwAuto(d.asset_book)}</strong></td>
+              <td><strong>${bigKrwAuto(d.asset_book)}</strong><div class="muted" style="font-size:11px">주당 ${perShareKrw(d.asset_book, d.shares_outstanding)}</div></td>
               <td class="${d.asset_book > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.asset_book - d.market_cap)/d.market_cap) : '-'}</td>
             </tr>
             <tr class="no-hover">
               <td><strong>상대가치</strong><div class="muted">PER · PBR · PSR · EV/EBITDA</div></td>
-              <td><strong>${bigKrwAuto(d.market_mid)}</strong></td>
+              <td><strong>${bigKrwAuto(d.market_mid)}</strong><div class="muted" style="font-size:11px">주당 ${perShareKrw(d.market_mid, d.shares_outstanding)}</div></td>
               <td class="${d.market_mid > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.market_mid - d.market_cap)/d.market_cap) : '-'}</td>
             </tr>
             <tr class="no-hover" style="background:var(--bg-elev-2);border-top:2px solid var(--accent)">
               <td><strong>★ 종합 기업가치</strong></td>
-              <td><strong style="color:var(--accent)">${bigKrwAuto(d.enterprise_mid)}</strong></td>
+              <td><strong style="color:var(--accent)">${bigKrwAuto(d.enterprise_mid)}</strong><div class="muted" style="font-size:11px">주당 ${perShareKrw(d.enterprise_mid, d.shares_outstanding)}</div></td>
               <td class="${d.upside_mid>=0?'pos':'neg'}"><strong>${fmt.pct(d.upside_mid)}</strong></td>
             </tr>
           </tbody>
@@ -1249,6 +1249,12 @@ function bigKrwAuto(n) {
   if (abs >= 1e12) return (n / 1e12).toFixed(2) + "조";
   if (abs >= 1e8)  return (n / 1e8).toFixed(0) + "억";
   return new Intl.NumberFormat("ko-KR").format(Math.round(n)) + "원";
+}
+
+// 기업가치(원) ÷ 발행주식수 = 주당 적정가. 값/주식수 없으면 '-'.
+function perShareKrw(value, shares) {
+  if (!value || !shares || shares <= 0) return "-";
+  return fmt.krw(value / shares);
 }
 
 async function renderSyScreener(root) {
@@ -1395,28 +1401,28 @@ function renderSyDetailContent(d) {
           <tr class="no-hover">
             <td><strong>수익가치접근법</strong></td>
             <td>${bigKrwAuto(d.income_min)}</td>
-            <td><strong>${bigKrwAuto(d.income_mid)}</strong></td>
+            <td><strong>${bigKrwAuto(d.income_mid)}</strong><div class="muted" style="font-size:10px">주당 ${perShareKrw(d.income_mid, d.shares_outstanding)}</div></td>
             <td>${bigKrwAuto(d.income_max)}</td>
             <td class="${d.income_mid > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.income_mid - d.market_cap)/d.market_cap) : '-'}</td>
           </tr>
           <tr class="no-hover">
             <td><strong>자산가치접근법</strong></td>
             <td>${bigKrwAuto(d.asset_liquidation)}</td>
-            <td><strong>${bigKrwAuto(d.asset_book)}</strong></td>
+            <td><strong>${bigKrwAuto(d.asset_book)}</strong><div class="muted" style="font-size:10px">주당 ${perShareKrw(d.asset_book, d.shares_outstanding)}</div></td>
             <td>${bigKrwAuto(d.asset_book)}</td>
             <td class="${d.asset_book > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.asset_book - d.market_cap)/d.market_cap) : '-'}</td>
           </tr>
           <tr class="no-hover">
             <td><strong>상대가치접근법</strong></td>
             <td>${bigKrwAuto(d.market_min)}</td>
-            <td><strong>${bigKrwAuto(d.market_mid)}</strong></td>
+            <td><strong>${bigKrwAuto(d.market_mid)}</strong><div class="muted" style="font-size:10px">주당 ${perShareKrw(d.market_mid, d.shares_outstanding)}</div></td>
             <td>${bigKrwAuto(d.market_max)}</td>
             <td class="${d.market_mid > d.market_cap ? 'pos' : 'neg'}">${d.market_cap ? fmt.pct((d.market_mid - d.market_cap)/d.market_cap) : '-'}</td>
           </tr>
           <tr class="no-hover" style="border-top:2px solid var(--accent);background:var(--bg-elev-2)">
             <td><strong>★ 종합 기업가치</strong></td>
             <td>${bigKrwAuto(d.enterprise_min)}</td>
-            <td><strong style="color:var(--accent)">${bigKrwAuto(d.enterprise_mid)}</strong></td>
+            <td><strong style="color:var(--accent)">${bigKrwAuto(d.enterprise_mid)}</strong><div class="muted" style="font-size:10px">주당 ${perShareKrw(d.enterprise_mid, d.shares_outstanding)}</div></td>
             <td>${bigKrwAuto(d.enterprise_max)}</td>
             <td class="${d.upside_mid>=0?'pos':'neg'}"><strong>${fmt.pct(d.upside_mid)}</strong></td>
           </tr>

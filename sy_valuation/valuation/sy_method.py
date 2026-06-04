@@ -85,6 +85,7 @@ class SyInputs:
     terminal_growth: float = 0.025    # 영구성장
     wacc: float = 0.0875              # 가중평균자본비용 (동적 계산 결과 또는 폴백)
     forecast_years: int = 10           # 명시 예측기간 10년
+    base_year: int = 0                 # 기초 재무 데이터의 회계연도(FY, DART _dart_year). 0=미상 → 현재연도-1 폴백
     dividend_payout_ratio: float = 0.30  # 배당성향 (ROE 성장률 산식용)
 
     # 피어 (상대가치)
@@ -224,6 +225,13 @@ def dcf_fcff(inp: SyInputs) -> tuple[float, list[dict[str, float]]]:
     """
     if inp.fcf <= 0 or inp.wacc <= inp.terminal_growth:
         return 0.0, []
+    # 투영 연도 라벨의 기준 = 기초 재무의 회계연도(FY). 기초가 FY{base_year} 이면
+    # 1년차 투영은 FY{base_year+1}. base_year 미상(0)이면 현재연도-1 로 폴백.
+    if inp.base_year > 0:
+        base_year = inp.base_year
+    else:
+        from datetime import date
+        base_year = date.today().year - 1
     rows = []
     pv_total = 0.0
     fcff = inp.fcf
@@ -232,7 +240,7 @@ def dcf_fcff(inp: SyInputs) -> tuple[float, list[dict[str, float]]]:
         fcff = fcff * (1 + g)
         pv = fcff / (1 + inp.wacc) ** t
         pv_total += pv
-        rows.append({"year": 2023 + t, "fcff": fcff, "pv": pv, "g": g})
+        rows.append({"year": base_year + t, "fcff": fcff, "pv": pv, "g": g})
     fcff_terminal = fcff * (1 + inp.terminal_growth)
     tv = fcff_terminal / (inp.wacc - inp.terminal_growth)
     pv_tv = tv / (1 + inp.wacc) ** inp.forecast_years

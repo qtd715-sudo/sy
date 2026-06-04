@@ -136,6 +136,14 @@ def build_inputs_from_raw(
     growth_long = growth_short * 0.5  # 후반 5년은 절반으로 감속
     terminal_growth = 0.025            # 한국 GDP 추세 (설계서 v2.0)
 
+    # 기초 재무 데이터의 회계연도 (DART _dart_year, 예: "2025") — DCF 투영 연도 라벨용.
+    # 없으면 0 → dcf_fcff 가 현재연도-1 로 폴백.
+    _dy = raw.get("_dart_year")
+    try:
+        base_year = int(_dy) if _dy else 0
+    except (ValueError, TypeError):
+        base_year = 0
+
     return SyInputs(
         ticker=raw["ticker"],
         name=name,
@@ -171,6 +179,7 @@ def build_inputs_from_raw(
         terminal_growth=terminal_growth,
         wacc=wacc,
         forecast_years=10,
+        base_year=base_year,
         dividend_payout_ratio=payout,
         peer_per_avg=peer_per,
         peer_pbr_avg=peer_pbr,

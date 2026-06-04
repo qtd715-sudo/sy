@@ -26,6 +26,42 @@ from typing import Any
 _CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "cache"
 
 
+# 업종별 감가상각 추정율 (매출 대비). DART fnlttSinglAcntAll 은 감가상각을 주석에만 둬서,
+# 기능별-표시 기업(삼성 등 대형주 다수)은 본표에서 D&A=0 으로 잡힌다. 그 경우 FCFF 계산용으로
+# 매출 × 업종율 로 추정한다. 매출 기준인 이유: 영업이익은 경기 따라 출렁이지만(분모 부적합)
+# 감가상각/매출 비율은 업종별로 안정적이다.
+_DEPR_GROUP_RATE = {
+    "초자본집약": 0.12,  # 반도체·통신·2차전지·디스플레이 (팹/망 감가 큼)
+    "일반제조": 0.06,    # 자동차·철강·조선·화학·기계 등
+    "건설": 0.02,
+    "유통": 0.03,
+    "서비스": 0.04,      # IT서비스·SW·금융·엔터
+    "기타": 0.03,
+}
+
+# 시스템 세부 섹터명(dart_sectors) → 그룹 키워드 매핑. 초자본집약 먼저 검사.
+_DEPR_GROUP_KEYWORDS = (
+    ("초자본집약", ("반도체", "디스플레이", "2차전지", "배터리", "통신")),
+    ("일반제조", ("전자부품", "전기설비", "자동차", "철강", "조선", "에너지", "화학", "정유",
+                "기계", "가정용기기", "의료기기", "의료용품", "의약", "바이오", "정밀",
+                "조명", "식료품", "음식료", "제조", "소재", "부품", "섬유", "타이어")),
+    ("건설", ("건설", "엔지니어링", "플랜트", "건자재")),
+    ("유통", ("유통", "소매", "쇼핑", "도매", "무역", "백화점", "마트", "홈쇼핑")),
+    ("서비스", ("서비스", "SW", "소프트웨어", "시스템", "데이터", "정보", "게임", "인터넷",
+               "은행", "보험", "금융", "투자", "증권", "엔터", "미디어", "출판", "광고",
+               "교육", "여행", "운송", "물류", "레저")),
+)
+
+
+def _depr_rate_for_sector(sector: str) -> float:
+    """섹터명 → 감가상각 추정율(매출 대비). 키워드 매칭, 미분류는 기타(3%)."""
+    s = sector or ""
+    for group, kws in _DEPR_GROUP_KEYWORDS:
+        if any(kw in s for kw in kws):
+            return _DEPR_GROUP_RATE[group]
+    return _DEPR_GROUP_RATE["기타"]
+
+
 class DartConnector:
     BASE = "https://opendart.fss.or.kr/api"
 
@@ -234,10 +270,22 @@ class DartConnector:
         lt_borrow = find_amount(
             ["ifrs-full_NoncurrentBorrowings", "dart_LongTermBorrowings", "장기차입금"],
             "BS", allow_substring=True)
-        # 현금흐름표 (sj_div=CF)
+        # 감가상각비(D&A): 현금흐름표(간접법 가산) → 손익계산서(성격별 표시) 순으로 파싱.
         depr = find_amount(
-            ["dart_DepreciationExpense", "ifrs-full_DepreciationAndAmortisationExpense", "감가상각비"],
+            ["dart_DepreciationExpense", "ifrs-full_DepreciationAndAmortisationExpense",
+             "감가상각비", "무형자산상각비"],
             "CF", allow_substring=True)
+        if depr <= 0:
+            depr = find_amount(
+                ["ifrs-full_DepreciationAndAmortisationExpense", "감가상각비", "무형자산상각비"],
+                "IS", allow_substring=True)
+        # 기능별 표시 기업(삼성 등)은 감가상각이 본표에 없고 주석에만 있어 0으로 잡힌다.
+        # → 업종별 매출 비율로 추정 (초자본집약 12% / 일반제조 6% / 건설 2% / 유통 3% /
+        #    서비스 4% / 기타 3%). 매출이 0이면 추정 생략(아래 FCFF 폴백으로 처리).
+        depr_estimated = False
+        if depr <= 0 and op_inc > 0 and revenue > 0:
+            depr = revenue * _depr_rate_for_sector(sector)
+            depr_estimated = True
         # CapEx — 투자활동 현금흐름의 "유형자산의 취득" 등 (절대값). 부재 시 0 → 추정 폴백
         capex = find_amount(
             ["ifrs-full_PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
@@ -260,16 +308,15 @@ class DartConnector:
 
         net_debt = (st_borrow + lt_borrow) - cash
         ebitda = op_inc + depr if op_inc > 0 else 0
-        # FCFF 는 sy_builder 에서 정통 공식으로 계산 — 여기선 raw 데이터만 전달.
-        # 다만 호환을 위해 fcf 필드도 유지 (sample_financials 형식과 일치).
-        # fcf = EBIT(1-Tc) + 감가상각 - CapEx - ΔWC. 운전자본은 데이터 부족 → 0 가정.
+        # FCFF 정통 공식: EBIT(1-Tc) + 감가상각 - CapEx - ΔWC (운전자본 ΔWC=0 가정).
+        # 감가상각은 위에서 파싱 실패 시 업종 추정값(depr_estimated)이 들어와 있다.
         if op_inc > 0:
             tc_eff = (tax_expense / op_inc) if tax_expense > 0 else 0.22
             tc_eff = min(max(tc_eff, 0.10), 0.30)   # 10~30% 범위로 클립 (이상치 방지)
             dep_eff = depr if depr > 0 else op_inc * 0.05
             cap_eff = capex if capex > 0 else dep_eff * 0.8
             fcf_calc = op_inc * (1 - tc_eff) + dep_eff - cap_eff
-            # 음수면 보수 폴백: 영업이익 × (1-Tc) × 0.75
+            # 그래도 음수면(추정 D&A < 실제 CapEx) 보수 폴백: 영업이익 × (1-Tc) × 0.75
             fcf = fcf_calc if fcf_calc > 0 else op_inc * (1 - tc_eff) * 0.75
         else:
             fcf = 0
