@@ -25,6 +25,7 @@ import json
 import mimetypes
 import os
 import sys
+import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,6 +47,11 @@ from .scheduler import Scheduler
 
 _ROOT = Path(__file__).resolve().parent
 _STATIC = _ROOT / "static"
+
+# 정적 파일 인메모리 캐시: {경로: (mtime, ctype, etag, raw_bytes, gzipped_bytes|None)}
+# 매 요청마다 디스크 read + gzip 재압축하던 비용 제거. 파일 mtime 이 바뀌면 자동 무효화.
+_STATIC_FILE_CACHE: dict[str, tuple] = {}
+_STATIC_CACHE_LOCK = threading.Lock()
 
 
 # DART 정식 재무제표로 덮어쓸 필드. sample_financials 의 부족분을 보강.
@@ -584,33 +590,69 @@ class Handler(BaseHTTPRequestHandler):
         if xff: return xff.split(",")[0].strip()
         return self.client_address[0] if self.client_address else ""
 
-    def _send_file(self, path: Path):
-        if not path.exists() or not path.is_file():
-            return self._not_found()
+    def _load_static(self, path: Path):
+        """정적 파일을 인메모리 캐시에서 가져온다 (mtime 기반 무효화).
+
+        리턴: (ctype, etag, raw_bytes, gzipped_bytes|None) 또는 None(없음).
+        디스크 read 와 gzip 압축은 파일이 처음 요청되거나 mtime 이 바뀌었을 때만 수행.
+        """
+        try:
+            st = path.stat()
+        except (FileNotFoundError, OSError):
+            return None
+        if not path.is_file():
+            return None
+        key = str(path)
+        cached = _STATIC_FILE_CACHE.get(key)
+        if cached and cached[0] == st.st_mtime:
+            return cached[1:]
+
         ctype, _ = mimetypes.guess_type(str(path))
         if ctype is None:
             ctype = "application/octet-stream"
         if ctype.startswith("text/") or ctype.endswith("javascript") or ctype.endswith("json"):
             ctype += "; charset=utf-8"
-        body = path.read_bytes()
+        raw = path.read_bytes()
 
-        # 텍스트 자산 gzip 압축 (이미지/svg 는 효과 적거나 역효과 → skip)
-        encoding = None
-        accept = (self.headers.get("Accept-Encoding") or "").lower()
+        # 텍스트 자산만 미리 gzip 압축해 캐싱 (이미지/svg 는 효과 적거나 역효과 → skip)
         is_text = (
             ctype.startswith("text/")
             or "javascript" in ctype
             or "json" in ctype
             or path.suffix == ".svg"   # SVG 는 text/xml. 큰 svg 면 효과 있음
         )
-        if "gzip" in accept and is_text and len(body) >= 1024:
-            body = gzip.compress(body, compresslevel=6)
-            encoding = "gzip"
+        gz = gzip.compress(raw, compresslevel=6) if (is_text and len(raw) >= 1024) else None
+        etag = f'"{int(st.st_mtime)}-{st.st_size}"'
+
+        entry = (ctype, etag, raw, gz)
+        with _STATIC_CACHE_LOCK:
+            _STATIC_FILE_CACHE[key] = (st.st_mtime,) + entry
+        return entry
+
+    def _send_file(self, path: Path):
+        loaded = self._load_static(path)
+        if loaded is None:
+            return self._not_found()
+        ctype, etag, raw, gz = loaded
+
+        # 조건부 요청: ETag 일치 시 304 (본문 전송 생략 → 대역폭·시간 절감)
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.end_headers()
+            return
+
+        accept = (self.headers.get("Accept-Encoding") or "").lower()
+        if gz is not None and "gzip" in accept:
+            body, encoding = gz, "gzip"
+        else:
+            body, encoding = raw, None
 
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Vary", "Accept-Encoding")
+        self.send_header("ETag", etag)
         if encoding:
             self.send_header("Content-Encoding", encoding)
         # sw.js: 항상 최신 (브라우저 SW 업데이트 보장)

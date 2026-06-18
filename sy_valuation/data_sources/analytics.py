@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import threading
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -28,20 +29,34 @@ _DB_PATH = Path(__file__).resolve().parents[1] / "data" / "analytics.db"
 
 
 class Analytics:
+    """단일 영속 SQLite 커넥션 + 락.
+
+    log() 는 모든 HTTP 요청마다 호출되므로 커넥션 재사용이 특히 효과적이다.
+    autocommit(isolation_level=None) 모드라 INSERT 후 별도 commit 불필요.
+    """
+
     def __init__(self, path: Path | None = None):
         self.path = Path(path) if path else _DB_PATH
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # IP 익명화 옵션: 환경변수 ANALYTICS_ANON_IP=1 이면 마지막 옥텟 0 으로
         self.anon_ip = os.environ.get("ANALYTICS_ANON_IP") in ("1", "true", "True")
+        self._lock = threading.Lock()
+        self._db: sqlite3.Connection | None = None
         self._init()
 
     def _conn(self) -> sqlite3.Connection:
-        c = sqlite3.connect(self.path, timeout=5.0, check_same_thread=False)
-        c.execute("PRAGMA journal_mode=WAL;")
-        return c
+        if self._db is None:
+            c = sqlite3.connect(
+                self.path, timeout=5.0, check_same_thread=False, isolation_level=None,
+            )
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute("PRAGMA synchronous=NORMAL;")
+            self._db = c
+        return self._db
 
     def _init(self):
-        with self._conn() as c:
+        with self._lock:
+            c = self._conn()
             c.execute("""
                 CREATE TABLE IF NOT EXISTS visits (
                     id INTEGER PRIMARY KEY,
@@ -75,8 +90,8 @@ class Analytics:
         if path.endswith((".css", ".js", ".ico", ".png", ".jpg", ".svg", ".woff", ".woff2")):
             return
         try:
-            with self._conn() as c:
-                c.execute(
+            with self._lock:
+                self._conn().execute(
                     "INSERT INTO visits (ts, path, ip, ua, ref, status, duration) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (time.time(), path[:200], self._normalize_ip(ip),
                      (ua or "")[:300], (ref or "")[:200], int(status), float(duration)),
@@ -113,7 +128,8 @@ class Analytics:
 
     def summary(self, hours: int = 24) -> dict[str, Any]:
         cutoff = time.time() - hours * 3600
-        with self._conn() as c:
+        with self._lock:
+            c = self._conn()
             # 총 방문, 유니크 IP, 유니크 패스
             row = c.execute(
                 "SELECT COUNT(*), COUNT(DISTINCT ip), COUNT(DISTINCT path) FROM visits WHERE ts >= ?",
@@ -172,8 +188,8 @@ class Analytics:
         }
 
     def recent(self, limit: int = 100) -> list[dict[str, Any]]:
-        with self._conn() as c:
-            rows = c.execute(
+        with self._lock:
+            rows = self._conn().execute(
                 "SELECT ts, path, ip, ua, ref, status, duration "
                 "FROM visits ORDER BY ts DESC LIMIT ?",
                 (limit,),
@@ -199,8 +215,8 @@ class Analytics:
 
     def purge_old(self, keep_days: int = 90) -> int:
         cutoff = time.time() - keep_days * 86400
-        with self._conn() as c:
-            cur = c.execute("DELETE FROM visits WHERE ts < ?", (cutoff,))
+        with self._lock:
+            cur = self._conn().execute("DELETE FROM visits WHERE ts < ?", (cutoff,))
             return cur.rowcount
 
 
