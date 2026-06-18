@@ -1,0 +1,29 @@
+{
+  "name": "sy-valuation-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SY Valuation 모바일 앱 (Capacitor) — 기업가치 평가 시스템 네이티브 래퍼",
+  "scripts": {
+    "sync": "cap sync",
+    "copy": "cap copy",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios",
+    "add:android": "cap add android",
+    "add:ios": "cap add ios",
+    "run:android": "cap run android",
+    "run:ios": "cap run ios",
+    "assets": "capacitor-assets generate --iconBackgroundColor '#0a0a0a' --splashBackgroundColor '#0a0a0a'"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/app": "^6.0.1",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/ios": "^6.1.2",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.1.2"
+  }
+}

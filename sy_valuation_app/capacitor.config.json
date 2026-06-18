@@ -1,0 +1,37 @@
+{
+  "appId": "com.sy.valuation",
+  "appName": "SY Valuation",
+  "webDir": "www",
+  "server": {
+    "url": "https://sy-valuation.onrender.com",
+    "cleartext": false,
+    "allowNavigation": [
+      "sy-valuation.onrender.com"
+    ]
+  },
+  "backgroundColor": "#0a0a0a",
+  "android": {
+    "backgroundColor": "#0a0a0a",
+    "allowMixedContent": false
+  },
+  "ios": {
+    "backgroundColor": "#0a0a0a",
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "backgroundColor": "#0a0a0a",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0a0a0a"
+    }
+  }
+}

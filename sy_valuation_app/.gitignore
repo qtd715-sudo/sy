@@ -1,0 +1,16 @@
+# 의존성
+node_modules/
+
+# Capacitor 가 생성하는 네이티브 프로젝트 (cap add android/ios 로 재생성 가능)
+android/
+ios/
+
+# @capacitor/assets 가 생성하는 산출물 (소스는 assets/*.svg)
+www/icon-*.png
+www/splash-*.png
+
+# 로그/임시
+*.log
+.DS_Store
+.idea/
+.gradle/
