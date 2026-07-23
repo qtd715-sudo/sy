@@ -65,6 +65,13 @@ jobs:
       - name: 웹/설정 동기화
         run: npx cap sync android
 
+      - name: targetSdk/compileSdk 35 로 상향 (Play 정책 = API 35+ 타게팅 필수)
+        run: |
+          sed -i -E 's/(compileSdkVersion = )[0-9]+/\135/; s/(targetSdkVersion = )[0-9]+/\135/' android/variables.gradle
+          # Capacitor 6 의 AGP(8.2.x)는 compileSdk 35 를 아직 공식 지원 안 하므로 경고 억제(빌드는 정상)
+          echo "android.suppressUnsupportedCompileSdk=35" >> android/gradle.properties
+          grep -E 'compileSdkVersion|targetSdkVersion' android/variables.gradle
+
       - name: versionCode 를 실행번호로 설정 (Play Console 중복 업로드 방지)
         run: |
           sed -i "s/versionCode .*/versionCode ${{ github.run_number }}/" android/app/build.gradle
