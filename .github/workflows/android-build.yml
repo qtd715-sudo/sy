@@ -109,7 +109,11 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          # 시크릿에 섞여 있을 수 있는 공백/CR/줄바꿈을 제거한 뒤 디코딩 (base64: invalid input 방지)
+          printf '%s' "$KS_B64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "keystore 크기: $(wc -c < "$RUNNER_TEMP/upload.jks") bytes"
+          # 키 접근 확인 (비번/별칭 틀리면 여기서 명확히 실패)
+          keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null
           AAB=android/app/build/outputs/bundle/release/app-release.aab
           jarsigner -keystore "$RUNNER_TEMP/upload.jks" \
             -storepass "$KS_PASS" -keypass "$KEY_PASS" \
