@@ -109,10 +109,13 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          # 시크릿에 섞여 있을 수 있는 비-base64 문자(공백/CR/제어문자 등)를 무시하고 디코딩
-          # (-i/--ignore-garbage) → 붙여넣기 오염에도 견고. base64: invalid input 방지
-          printf '%s' "$KS_B64" | base64 -di > "$RUNNER_TEMP/upload.jks"
-          echo "keystore 크기: $(wc -c < "$RUNNER_TEMP/upload.jks") bytes"
+          # 붙여넣기 오염에 견고하게: base64 알파벳(A-Za-z0-9+/)만 남기고 padding 을 재계산.
+          # 공백/CR/제어문자/깨진 padding 을 모두 복구한 뒤 디코딩 → base64: invalid input 방지.
+          CLEAN=$(printf '%s' "$KS_B64" | tr -cd 'A-Za-z0-9+/')
+          MOD=$(( ${#CLEAN} % 4 ))
+          if [ "$MOD" -eq 2 ]; then CLEAN="${CLEAN}=="; elif [ "$MOD" -eq 3 ]; then CLEAN="${CLEAN}="; fi
+          printf '%s' "$CLEAN" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "keystore 크기: $(wc -c < "$RUNNER_TEMP/upload.jks") bytes (정상=2638)"
           # 키 접근 확인 (비번/별칭 틀리면 여기서 명확히 실패)
           keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null
           AAB=android/app/build/outputs/bundle/release/app-release.aab
