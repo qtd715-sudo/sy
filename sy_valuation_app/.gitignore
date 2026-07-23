@@ -14,3 +14,9 @@ www/splash-*.png
 .DS_Store
 .idea/
 .gradle/
+
+# 서명 키 (절대 커밋 금지)
+*.jks
+*.keystore
+keystore.base64*
+

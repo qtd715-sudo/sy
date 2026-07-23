@@ -1,10 +1,18 @@
-name: Android APK 빌드
+name: Android 빌드 (APK + AAB)
 
 # 회사망에서 dl.google.com(Android SDK/Gradle) 다운로드가 막혀 로컬 빌드가 불가하므로,
-# 클린 네트워크인 GitHub Actions 러너에서 APK 를 빌드해 아티팩트로 제공한다.
+# 클린 네트워크인 GitHub Actions 러너에서 빌드해 아티팩트로 제공한다.
 #
-# 결과물: Actions 탭 → 해당 실행 → Artifacts → "sy-valuation-debug-apk" 다운로드.
-# debug APK 는 서명 없이 폰에 사이드로드(설치) 가능 (설정 > 출처를 알 수 없는 앱 허용).
+# 결과물 (Actions 탭 → 해당 실행 → Artifacts):
+#   • sy-valuation-debug-apk  : 서명 없는 디버그 APK. 폰에 사이드로드(설치)용.
+#   • sy-valuation-release-aab: 서명된 릴리스 AAB. Play Console 업로드용 (서명 시크릿 설정 시에만 생성).
+#
+# Play Console 업로드에 필요한 GitHub Secrets (Settings → Secrets and variables → Actions):
+#   ANDROID_KEYSTORE_BASE64   - keystore(.jks) 파일을 base64 인코딩한 값
+#   ANDROID_KEYSTORE_PASSWORD - keystore 비밀번호
+#   ANDROID_KEY_ALIAS         - 키 별칭 (예: sy-upload)
+#   ANDROID_KEY_PASSWORD      - 키 비밀번호
+# 시크릿이 없으면 AAB 단계는 건너뛰고 디버그 APK 만 생성된다.
 #
 # android/ 디렉터리는 .gitignore 라 커밋되지 않으므로, CI 에서 `cap add android` 로 재생성한다.
 
@@ -57,6 +65,11 @@ jobs:
       - name: 웹/설정 동기화
         run: npx cap sync android
 
+      - name: versionCode 를 실행번호로 설정 (Play Console 중복 업로드 방지)
+        run: |
+          sed -i "s/versionCode .*/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
+
       - name: Debug APK 빌드
         working-directory: sy_valuation_app/android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
@@ -66,5 +79,51 @@ jobs:
         with:
           name: sy-valuation-debug-apk
           path: sy_valuation_app/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # ---- 여기서부터는 서명 시크릿이 설정된 경우에만 실행 (Play Console 용 AAB) ----
+
+      - name: 서명 시크릿 존재 확인
+        id: signcheck
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::서명 시크릿(ANDROID_KEYSTORE_BASE64 등)이 없어 릴리스 AAB 를 건너뜁니다. 디버그 APK 만 생성됩니다."
+          fi
+
+      - name: 릴리스 AAB 빌드
+        if: steps.signcheck.outputs.ready == 'true'
+        working-directory: sy_valuation_app/android
+        run: ./gradlew bundleRelease --no-daemon --stacktrace
+
+      - name: AAB 서명 + 검증
+        if: steps.signcheck.outputs.ready == 'true'
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          jarsigner -keystore "$RUNNER_TEMP/upload.jks" \
+            -storepass "$KS_PASS" -keypass "$KEY_PASS" \
+            -sigalg SHA256withRSA -digestalg SHA-256 \
+            "$AAB" "$KEY_ALIAS"
+          jarsigner -verify "$AAB"
+          cp "$AAB" android/app/build/outputs/bundle/release/sy-valuation-release.aab
+          rm -f "$RUNNER_TEMP/upload.jks"
+
+      - name: AAB 아티팩트 업로드
+        if: steps.signcheck.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sy-valuation-release-aab
+          path: sy_valuation_app/android/app/build/outputs/bundle/release/sy-valuation-release.aab
           if-no-files-found: error
           retention-days: 30
