@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;width:1024px;height:500px;overflow:hidden;background:#0a0a0a;color:#fafaf9;
+    font-family:"Malgun Gothic","Segoe UI","Apple SD Gothic Neo",sans-serif;}
+  .wrap{position:relative;width:1024px;height:500px;display:flex;align-items:center;gap:56px;padding:0 72px;box-sizing:border-box;}
+  .glow{position:absolute;left:-120px;top:-160px;width:620px;height:620px;border-radius:50%;
+    background:radial-gradient(circle,rgba(34,197,94,.22) 0%,rgba(34,197,94,0) 70%);}
+  .icon{position:relative;flex:0 0 auto;width:236px;height:236px;border-radius:52px;background:#0a0a0a;
+    border:3px solid #262626;box-shadow:0 30px 60px rgba(0,0,0,.6);overflow:hidden;}
+  .icon svg{display:block;width:100%;height:100%;}
+  .text{position:relative;flex:1;min-width:0;}
+  .name{font-size:76px;font-weight:700;letter-spacing:-2px;line-height:1;margin:0;}
+  .name span{color:#22c55e;}
+  .tag{font-size:30px;color:#d6d3d1;margin:22px 0 0;line-height:1.35;font-weight:400;}
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;}
+  .chip{font-family:Consolas,"JetBrains Mono",monospace;font-size:18px;letter-spacing:.5px;color:#fafaf9;
+    border:1.5px solid #3f3f46;border-radius:999px;padding:6px 14px;}
+  .chip.hl{border-color:#22c55e;color:#22c55e;}
+</style></head>
+<body>
+<div class="wrap">
+  <div class="glow"></div>
+  <div class="icon">
+    <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1024" height="1024" fill="#0a0a0a"/>
+      <g transform="translate(512 517) scale(1.25) translate(-512 -517)">
+        <line x1="272" y1="312" x2="752" y2="312" stroke="#22c55e" stroke-width="44" stroke-linecap="round"/>
+        <rect x="300" y="548" width="112" height="196" rx="26" fill="#fafaf9"/>
+        <rect x="456" y="464" width="112" height="280" rx="26" fill="#fafaf9"/>
+        <rect x="612" y="380" width="112" height="364" rx="26" fill="#fafaf9"/>
+      </g>
+    </svg>
+  </div>
+  <div class="text">
+    <h1 class="name">SY <span>Valuation</span></h1>
+    <p class="tag">적정주가를 9개 모델 + SY 평가법으로,<br>전종목 저평가 스크리너까지 한 번에</p>
+    <div class="chips">
+      <span class="chip hl">SY 평가법</span><span class="chip">DCF</span><span class="chip">RIM</span>
+      <span class="chip">PER · PBR · PSR</span><span class="chip">EV/EBITDA</span>
+      <span class="chip">Graham</span><span class="chip">Lynch</span><span class="chip">토픽 뉴스</span>
+    </div>
+  </div>
+</div>
+</body></html>

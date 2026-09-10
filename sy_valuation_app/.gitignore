@@ -20,3 +20,7 @@ www/splash-*.png
 *.keystore
 keystore.base64*
 
+
+# 스토어 이미지 생성 중간 산출물 (store/tools/make_store_assets.py)
+store/tools/raw/
+store/tools/html/
