@@ -122,3 +122,9 @@ git add .
 git commit -m "메시지"
 git push -u origin main
 ```
+
+## 포트폴리오 사이트 분리 (2026-09-10)
+
+개인 포트폴리오 웹사이트(`index.html` / `script.js` / `style.css` / `photo*.png`)는 별도 저장소
+[qtd715-sudo/portfolio](https://github.com/qtd715-sudo/portfolio) 로 분리했습니다 (2026-02-23 이후 커밋 히스토리 보존).
+이 저장소는 기업가치 평가 시스템(`sy_valuation`, `sy_valuation_app`)만 관리합니다.
