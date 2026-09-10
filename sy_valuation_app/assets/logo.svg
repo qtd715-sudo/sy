@@ -1,9 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    SY Valuation 앱 아이콘 (원본 1024x1024)
+    개념: 시장가(흰 막대 3개, 상승) 위에 놓인 적정가치 라인(그린) — "가격 vs 가치"를 한 형태로.
+    안전 영역: 마크는 중앙 656x568 박스 안 (Android adaptive icon 안전영역 직경 939px 이내).
+    색상: 배경 #0a0a0a(앱 테마) / 막대 #fafaf9 / 적정가치 #22c55e
+  -->
   <rect width="1024" height="1024" fill="#0a0a0a"/>
-  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-weight="800" font-size="440" letter-spacing="-12" fill="#fafaf9">SY</text>
-  <text x="50%" y="74%" text-anchor="middle"
-        font-family="ui-monospace,Consolas,monospace"
-        font-size="72" letter-spacing="20" fill="#737373">VALUATION</text>
+  <g transform="translate(512 517) scale(1.25) translate(-512 -517)">
+    <!-- 적정가치(Fair Value) 라인 -->
+    <line x1="272" y1="312" x2="752" y2="312" stroke="#22c55e" stroke-width="44" stroke-linecap="round"/>
+    <!-- 시장가 막대 (상승 추세) -->
+    <rect x="300" y="548" width="112" height="196" rx="26" fill="#fafaf9"/>
+    <rect x="456" y="464" width="112" height="280" rx="26" fill="#fafaf9"/>
+    <rect x="612" y="380" width="112" height="364" rx="26" fill="#fafaf9"/>
+  </g>
 </svg>

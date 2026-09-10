@@ -16,6 +16,7 @@
       -webkit-user-select: none; user-select: none;
     }
     .wrap { text-align: center; max-width: 360px; }
+    .mark { display: block; margin: 0 auto 18px; }
     .logo {
       font-weight: 800; font-size: 64px; letter-spacing: -4px; line-height: 1;
     }
@@ -41,6 +42,13 @@
 </head>
 <body>
   <div class="wrap">
+    <!-- 앱 마크 (assets/logo.svg 와 동일): 시장가 막대 위 적정가치 라인 -->
+    <svg class="mark" viewBox="240 280 544 490" width="88" height="80" aria-hidden="true">
+      <line x1="272" y1="312" x2="752" y2="312" stroke="#22c55e" stroke-width="44" stroke-linecap="round"/>
+      <rect x="300" y="548" width="112" height="196" rx="26" fill="#fafaf9"/>
+      <rect x="456" y="464" width="112" height="280" rx="26" fill="#fafaf9"/>
+      <rect x="612" y="380" width="112" height="364" rx="26" fill="#fafaf9"/>
+    </svg>
     <div class="logo">SY</div>
     <div class="sub">VALUATION</div>
     <div class="spinner" id="spinner"></div>
