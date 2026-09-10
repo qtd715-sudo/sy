@@ -16,7 +16,8 @@
   <text x="50%" y="1690" text-anchor="middle"
         font-family="'Segoe UI','Helvetica Neue',Arial,'DejaVu Sans',sans-serif"
         font-weight="800" font-size="132" letter-spacing="30" fill="#fafaf9">SY VALUATION</text>
+  <!-- 부제는 9:16 세로 크롭(가시폭 ≈1537px) 안에 들어오도록 짧게 (≈1000px) -->
   <text x="50%" y="1800" text-anchor="middle"
         font-family="Consolas,'DejaVu Sans Mono',monospace"
-        font-size="60" letter-spacing="18" fill="#737373">FAIR VALUE · 9 MODELS · SY METHOD</text>
+        font-size="56" letter-spacing="14" fill="#737373">FAIR VALUE · 9 MODELS</text>
 </svg>
