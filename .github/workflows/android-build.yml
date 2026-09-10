@@ -7,6 +7,13 @@ name: Android 빌드 (APK + AAB)
 #   • sy-valuation-debug-apk  : 서명 없는 디버그 APK. 폰에 사이드로드(설치)용.
 #   • sy-valuation-release-aab: 서명된 릴리스 AAB. Play Console 업로드용 (서명 시크릿 설정 시에만 생성).
 #
+# 서명된 AAB 는 아티팩트 외에 저장소 releases/sy-valuation-release.aab 로도 자동 커밋된다
+# (회사망에서 Actions 아티팩트 다운로드가 번거로우므로, 항상 최신 AAB 를 git 에서 바로 받을 수 있게).
+# 커밋 메시지에 [skip render] 를 넣어 Render 재배포는 일으키지 않는다.
+#
+# 앱 아이콘/스플래시는 sy_valuation_app/assets/logo.svg, splash.svg 에서 생성된다.
+# (반드시 `cap add android` 이후에 생성해야 리소스가 실제 android/ 프로젝트에 들어간다.)
+#
 # Play Console 업로드에 필요한 GitHub Secrets (Settings → Secrets and variables → Actions):
 #   ANDROID_KEYSTORE_BASE64   - keystore(.jks) 파일을 base64 인코딩한 값
 #   ANDROID_KEYSTORE_PASSWORD - keystore 비밀번호
@@ -21,10 +28,11 @@ on:
   push:
     paths:
       - 'sy_valuation_app/**'
+      - '!sy_valuation_app/store/**'   # 스토어 등록 이미지 변경은 앱 빌드와 무관
       - '.github/workflows/android-build.yml'
 
 permissions:
-  contents: read
+  contents: write                # 서명된 AAB 를 releases/ 에 커밋/푸시
 
 concurrency:
   group: android-build
@@ -56,14 +64,21 @@ jobs:
       - name: 의존성 설치
         run: npm install
 
-      - name: 아이콘/스플래시 생성 (실패해도 빌드 진행)
-        run: npx capacitor-assets generate --iconBackgroundColor '#0a0a0a' --splashBackgroundColor '#0a0a0a' || true
-
       - name: Android 플랫폼 추가
         run: npx cap add android
 
       - name: 웹/설정 동기화
         run: npx cap sync android
+
+      # android/ 프로젝트가 생긴 뒤에 실행해야 mipmap/drawable 리소스가 실제로 교체된다.
+      # (이전에는 cap add 전에 실행 + `|| true` 라서 기본 Capacitor 아이콘이 그대로 패키징됐다.)
+      - name: 아이콘/스플래시 생성 (assets/logo.svg, splash.svg → Android 리소스)
+        run: |
+          npx capacitor-assets generate --android --iconBackgroundColor '#0a0a0a' --splashBackgroundColor '#0a0a0a'
+          test -s android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png
+          test -s android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          test -s android/app/src/main/res/drawable/splash.png
+          echo "아이콘/스플래시 리소스 생성 확인 완료"
 
       - name: targetSdk/compileSdk 35 로 상향 (Play 정책 = API 35+ 타게팅 필수)
         run: |
@@ -142,3 +157,28 @@ jobs:
           path: sy_valuation_app/android/app/build/outputs/bundle/release/sy-valuation-release.aab
           if-no-files-found: error
           retention-days: 30
+
+      - name: 서명된 AAB 를 releases/ 에 커밋 (git 에서 바로 내려받을 수 있게)
+        if: steps.signcheck.outputs.ready == 'true' && github.event_name == 'push'
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p releases
+          cp sy_valuation_app/android/app/build/outputs/bundle/release/sy-valuation-release.aab releases/sy-valuation-release.aab
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add releases/sy-valuation-release.aab
+          if git diff --staged --quiet; then
+            echo "변경 없음 — 커밋 생략"
+            exit 0
+          fi
+          git commit -m "chore(release): 서명된 릴리스 AAB 자동 갱신 (run #${{ github.run_number }}, versionCode ${{ github.run_number }}) [skip render]"
+          # 스크리너 봇 등 다른 커밋과 동시에 푸시되면 rebase 후 재시도 (AAB 는 이 워크플로만 건드리므로 충돌 없음)
+          for i in 1 2 3; do
+            if git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "푸시 완료: releases/sy-valuation-release.aab"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::AAB 커밋 푸시 실패 (3회 재시도)"
+          exit 1
