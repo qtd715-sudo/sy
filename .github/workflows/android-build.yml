@@ -80,16 +80,23 @@ jobs:
           test -s android/app/src/main/res/drawable/splash.png
           echo "아이콘/스플래시 리소스 생성 확인 완료"
 
-      - name: targetSdk/compileSdk 35 로 상향 (Play 정책 = API 35+ 타게팅 필수)
+      # Play 정책: 2026-08-31 부터 신규 앱/업데이트는 Android 16 (API 36) 이상 타게팅 필수.
+      # (2025 년엔 API 35 였음 — 매년 8/31 에 한 단계씩 올라가므로 거부되면 여기 숫자를 올린다.)
+      - name: targetSdk/compileSdk 36 으로 상향 (Play 정책 = API 36+ 타게팅 필수)
         run: |
-          sed -i -E 's/(compileSdkVersion = )[0-9]+/\135/; s/(targetSdkVersion = )[0-9]+/\135/' android/variables.gradle
-          # Capacitor 6 의 AGP(8.2.x)는 compileSdk 35 를 아직 공식 지원 안 하므로 경고 억제(빌드는 정상)
-          echo "android.suppressUnsupportedCompileSdk=35" >> android/gradle.properties
+          sed -i -E 's/(compileSdkVersion = )[0-9]+/\136/; s/(targetSdkVersion = )[0-9]+/\136/' android/variables.gradle
+          # Capacitor 6 의 AGP(8.2.x)는 compileSdk 36 을 공식 지원 안 하므로 경고 억제(35 때와 동일 방식, 빌드는 정상)
+          echo "android.suppressUnsupportedCompileSdk=36" >> android/gradle.properties
           grep -E 'compileSdkVersion|targetSdkVersion' android/variables.gradle
 
-      - name: versionCode 를 실행번호로 설정 (Play Console 중복 업로드 방지)
+      # versionCode 는 Play Console 에 올린 어떤 버전보다 항상 커야 한다(같거나 낮으면 업로드 거부).
+      # 1000 + 실행번호 로 두어 단조 증가를 보장하고, 과거 실행번호(1~9)로 만든 번들보다 확실히 크게 한다.
+      # versionName 은 1.0.<실행번호> 로 두어 Play Console 목록에서 빌드를 구분할 수 있게 한다.
+      - name: versionCode/versionName 설정 (Play Console 중복·하위 버전 업로드 방지)
         run: |
-          sed -i "s/versionCode .*/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          VC=$((1000 + ${{ github.run_number }}))
+          sed -i "s/versionCode .*/versionCode ${VC}/" android/app/build.gradle
+          sed -i "s/versionName .*/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
           grep -n "versionCode\|versionName" android/app/build.gradle
 
       - name: Debug APK 빌드
