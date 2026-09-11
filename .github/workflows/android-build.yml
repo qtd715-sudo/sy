@@ -98,6 +98,8 @@ jobs:
           sed -i "s/versionCode .*/versionCode ${VC}/" android/app/build.gradle
           sed -i "s/versionName .*/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
           grep -n "versionCode\|versionName" android/app/build.gradle
+          echo "VERSION_CODE=${VC}" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=1.0.${{ github.run_number }}" >> "$GITHUB_ENV"
 
       - name: Debug APK 빌드
         working-directory: sy_valuation_app/android
@@ -178,7 +180,7 @@ jobs:
             echo "변경 없음 — 커밋 생략"
             exit 0
           fi
-          git commit -m "chore(release): 서명된 릴리스 AAB 자동 갱신 (run #${{ github.run_number }}, versionCode ${{ github.run_number }}) [skip render]"
+          git commit -m "chore(release): 서명된 릴리스 AAB 자동 갱신 (run #${{ github.run_number }}, versionCode ${VERSION_CODE}, versionName ${VERSION_NAME}, targetSdk 36) [skip render]"
           # 스크리너 봇 등 다른 커밋과 동시에 푸시되면 rebase 후 재시도 (AAB 는 이 워크플로만 건드리므로 충돌 없음)
           for i in 1 2 3; do
             if git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"; then
