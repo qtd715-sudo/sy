@@ -62,8 +62,21 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK 설정
+      # ubuntu-latest 러너에는 Android SDK(cmdline-tools/build-tools/platforms)가 이미 설치되어 있고 AGP 가 부족한
+      # 플랫폼을 자동 내려받는다. setup-android 는 보조 수단이므로 (run #12 처럼) 일시 실패해도 빌드를 계속한다.
+      - name: Android SDK 설정 (실패 시 러너 내장 SDK 사용)
+        id: sdk
         uses: android-actions/setup-android@v3
+        continue-on-error: true
+
+      - name: Android SDK 라이선스 확인 (러너 내장 SDK 폴백)
+        if: steps.sdk.outcome != 'success'
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=${SDK}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${SDK}" >> "$GITHUB_ENV"
+          yes | "${SDK}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          ls "${SDK}/platforms" || true
 
       - name: 의존성 설치
         run: npm install
