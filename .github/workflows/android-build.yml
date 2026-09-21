@@ -38,6 +38,10 @@ concurrency:
   group: android-build
   cancel-in-progress: true
 
+env:
+  # Play 정책 타겟 API 수준. 2026-08-31 부터 36 (매년 8/31 에 한 단계 상향). 거부되면 이 값만 올린다.
+  TARGET_API: "36"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -80,13 +84,12 @@ jobs:
           test -s android/app/src/main/res/drawable/splash.png
           echo "아이콘/스플래시 리소스 생성 확인 완료"
 
-      # Play 정책: 2026-08-31 부터 신규 앱/업데이트는 Android 16 (API 36) 이상 타게팅 필수.
-      # (2025 년엔 API 35 였음 — 매년 8/31 에 한 단계씩 올라가므로 거부되면 여기 숫자를 올린다.)
-      - name: targetSdk/compileSdk 36 으로 상향 (Play 정책 = API 36+ 타게팅 필수)
+      # Play 정책: 2026-08-31 부터 신규 앱/업데이트는 Android 16 (API 36) 이상 타게팅 필수 (env.TARGET_API).
+      - name: targetSdk/compileSdk 를 TARGET_API 로 상향 (Play 정책 타게팅 필수)
         run: |
-          sed -i -E 's/(compileSdkVersion = )[0-9]+/\136/; s/(targetSdkVersion = )[0-9]+/\136/' android/variables.gradle
-          # Capacitor 6 의 AGP(8.2.x)는 compileSdk 36 을 공식 지원 안 하므로 경고 억제(35 때와 동일 방식, 빌드는 정상)
-          echo "android.suppressUnsupportedCompileSdk=36" >> android/gradle.properties
+          sed -i -E "s/(compileSdkVersion = )[0-9]+/\1${TARGET_API}/; s/(targetSdkVersion = )[0-9]+/\1${TARGET_API}/" android/variables.gradle
+          # Capacitor 6 의 AGP(8.2.x)는 최신 compileSdk 를 공식 지원 안 하므로 경고 억제(빌드는 정상)
+          echo "android.suppressUnsupportedCompileSdk=${TARGET_API}" >> android/gradle.properties
           grep -E 'compileSdkVersion|targetSdkVersion' android/variables.gradle
 
       # versionCode 는 Play Console 에 올린 어떤 버전보다 항상 커야 한다(같거나 낮으면 업로드 거부).
@@ -158,6 +161,17 @@ jobs:
           cp "$AAB" android/app/build/outputs/bundle/release/sy-valuation-release.aab
           rm -f "$RUNNER_TEMP/upload.jks"
 
+      # 서명된 번들의 매니페스트를 직접 열어 Play 업로드 조건을 검증한다 (bundletool 불필요).
+      # targetSdk < TARGET_API 이거나 versionCode/versionName 이 설정값과 다르면 여기서 실패 → 잘못된 AAB 는 커밋/업로드되지 않는다.
+      - name: AAB 검증 (targetSdk ≥ TARGET_API, versionCode/versionName 일치)
+        if: steps.signcheck.outputs.ready == 'true'
+        run: |
+          python3 tools/aab_manifest.py android/app/build/outputs/bundle/release/sy-valuation-release.aab \
+            --min-target-sdk "${TARGET_API}" \
+            --expect-version-code "${VERSION_CODE}" \
+            --expect-version-name "${VERSION_NAME}" | tee /tmp/aab_check.txt
+          { echo '### AAB 검증'; echo '```'; cat /tmp/aab_check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
       - name: AAB 아티팩트 업로드
         if: steps.signcheck.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
@@ -180,7 +194,7 @@ jobs:
             echo "변경 없음 — 커밋 생략"
             exit 0
           fi
-          git commit -m "chore(release): 서명된 릴리스 AAB 자동 갱신 (run #${{ github.run_number }}, versionCode ${VERSION_CODE}, versionName ${VERSION_NAME}, targetSdk 36) [skip render]"
+          git commit -m "chore(release): 서명된 릴리스 AAB 자동 갱신 (run #${{ github.run_number }}, versionCode ${VERSION_CODE}, versionName ${VERSION_NAME}, targetSdk ${TARGET_API}) [skip render]"
           # 스크리너 봇 등 다른 커밋과 동시에 푸시되면 rebase 후 재시도 (AAB 는 이 워크플로만 건드리므로 충돌 없음)
           for i in 1 2 3; do
             if git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"; then
