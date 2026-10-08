@@ -5,7 +5,9 @@ name: 전종목 스크리너 캐시 갱신
 
 on:
   schedule:
-    # DART 무료 한도(20,000 req/일) 보호 — 1회 빌드 ≈ 3,473종목 × 종목당 DART ~2콜(9모델+SY).
+    # DART 무료 한도(20,000 req/일) 보호 — TTM 은 종목당 보고서 3개(최신 분·반기 + 작년 연간 + 작년 동기)가
+    # 필요하지만 보고서별 추출값을 180일 캐시하고 아래 actions/cache 로 실행 간 유지 →
+    # 첫 빌드만 ≈ 3,473 × 3~4콜, 이후엔 새 공시분만 호출.
     # 4시간마다(6회/일)는 한도를 5만+/일로 초과시켜 020(사용한도 초과)→Naver 폴백을 유발했음.
     # 하루 2회로 제한. GitHub Actions cron 은 UTC 기준 (KST = UTC + 9):
     #   KST 09:00 → UTC 00:00,  KST 14:00 → UTC 05:00  (minute 5 = cron 지연 여유분)
@@ -29,6 +31,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # DART 보고서 캐시(cache.db) + corp_code 매핑을 실행 간 유지 — 없으면 매 실행 전종목 재조회로 한도 초과
+      - name: DART 캐시 복원
+        uses: actions/cache@v4
+        with:
+          path: |
+            sy_valuation/data/cache.db*
+            sy_valuation/data/cache
+          key: dart-cache-${{ github.run_id }}
+          restore-keys: |
+            dart-cache-
 
       - name: 전종목 배치 실행 (DART 연동)
         env:

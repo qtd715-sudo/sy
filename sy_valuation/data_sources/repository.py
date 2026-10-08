@@ -224,89 +224,93 @@ class FinancialsRepository:
         return self.to_financials(raw)
 
     def get_or_build_financials(self, query: str, live=None, naver=None, dart=None, naver_fin=None) -> Financials | None:
-        """우선순위: 샘플 → DART (정식, 키 필요) → Naver 재무제표 → Naver 기본정보 → Yahoo → None."""
-        f = self.get_financials(query)
-        if f:
-            return f
+        """우선순위: DART 최신 TTM → Naver 최근 4분기(TTM) → 샘플 → Naver 기본정보 → Yahoo → None.
 
-        meta = self.get_ticker_meta(query)
+        샘플(sample_financials.json)은 고정값이라 실시간 가격과 섞이면 PER 등이 왜곡됨 →
+        국내 종목은 라이브 재무를 먼저 시도하고, 샘플은 라이브 실패 시 폴백으로만 쓴다.
+        (샘플의 섹터·성장률 가정은 라이브 경로에서도 재사용)
+        """
+        sample = self.find(query)
+        meta = self.get_ticker_meta(sample["ticker"] if sample else query)
+        if not meta and sample:
+            meta = {"ticker": sample["ticker"], "name": sample["name"], "sector": sample.get("sector", "")}
         if not meta:
             return None
-        sector = meta.get("sector") or "기타"
+        sector = (sample or {}).get("sector") or meta.get("sector") or "기타"
         s = self._sectors.get(sector, {"per": 12.0, "pbr": 1.0, "psr": 1.0, "ev_ebitda": 8.0})
         ticker = meta["ticker"]
         name = meta["name"]
+        growth = (sample or {}).get("growth_rate", 0.05)
 
         is_kr = ticker.isdigit() and len(ticker) == 6
 
-        # 1) DART (정식 재무제표, 한국 종목 + 키 필요)
+        def _naver_price_shares():
+            info = naver.fetch(ticker) if naver is not None else None
+            if not info:
+                return None
+            from .naver_fundamentals import _to_won
+            price = _to_won(info.get("lastClosePrice", ""))
+            mcap = _to_won(info.get("marketValue", ""))
+            shares = mcap / price if price > 0 else 0
+            if shares <= 0:
+                return None
+            return {"current_price": price, "shares_outstanding": shares, "market_cap": mcap,
+                    "eps": _to_won(info.get("eps", "")), "bps": _to_won(info.get("bps", "")),
+                    "dps": _to_won(info.get("dividend", ""))}
+
+        # 1) DART (정식 재무제표 최신 TTM, 한국 종목 + 키 필요)
         if is_kr and dart is not None and getattr(dart, "enabled", False):
             try:
                 raw = dart.latest_partial_financials(ticker, name, sector)
-                if raw and naver is not None:
-                    # DART 가 가격 정보는 안 줌 → Naver fundamentals 로 보강
-                    info = naver.fetch(ticker)
-                    if info:
-                        from .naver_fundamentals import _to_won
-                        price = _to_won(info.get("lastClosePrice", ""))
-                        eps = _to_won(info.get("eps", ""))
-                        bps = _to_won(info.get("bps", ""))
-                        mcap = _to_won(info.get("marketValue", ""))
-                        div = _to_won(info.get("dividend", ""))
-                        shares = mcap / price if price > 0 else 0
-                        if shares > 0:
-                            raw.update({
-                                "current_price": price,
-                                "shares_outstanding": shares,
-                                "eps": eps, "bps": bps,
-                                "sps": raw["revenue"] / shares if shares > 0 else 0,
-                                "dps": div,
-                                "roe": (raw["net_income"] / raw["total_equity"]) if raw.get("total_equity", 0) > 0 else 0,
-                                "growth_rate": 0.05,
-                                "market_cap": mcap,
-                                "sector_per": s.get("per", 12.0),
-                                "sector_pbr": s.get("pbr", 1.0),
-                                "sector_psr": s.get("psr", 1.0),
-                                "sector_ev_ebitda": s.get("ev_ebitda", 8.0),
-                            })
-                            return self.to_financials(raw)
+                px = _naver_price_shares() if raw else None
+                if raw and px:
+                    # DART 가 가격은 안 줌 → Naver 로 가격·주식수 보강, EPS/BPS/ROE 는 DART 기준 재계산
+                    from .dart import apply_per_share
+                    raw = dict(raw)
+                    raw.update(px)
+                    raw.update({"sector": sector, "growth_rate": growth})
+                    apply_per_share(raw)
+                    f = self.to_financials(raw)
+                    f.basis = f"DART {raw.get('_dart_basis', '')}"
+                    return f
             except Exception:
                 pass
 
-        # 2) Naver 연간 재무제표 (DART 폴백)
+        # 2) Naver 최근 4분기 합산 재무 (DART 폴백)
         if is_kr and naver_fin is not None and naver is not None:
             try:
                 raw = naver_fin.to_partial_financials(ticker, name, sector)
-                if raw:
-                    info = naver.fetch(ticker)
-                    if info:
-                        from .naver_fundamentals import _to_won
-                        price = _to_won(info.get("lastClosePrice", ""))
-                        mcap = _to_won(info.get("marketValue", ""))
-                        shares = mcap / price if price > 0 else 0
-                        if shares > 0:
-                            raw["current_price"] = price
-                            raw["shares_outstanding"] = shares
-                            raw["sps"] = raw["revenue"] / shares if shares > 0 else 0
-                            raw["market_cap"] = mcap
-                            raw["sector_per"] = s.get("per", 12.0)
-                            raw["sector_pbr"] = s.get("pbr", 1.0)
-                            raw["sector_psr"] = s.get("psr", 1.0)
-                            raw["sector_ev_ebitda"] = s.get("ev_ebitda", 8.0)
-                            return self.to_financials(raw)
+                px = _naver_price_shares() if raw else None
+                if raw and px:
+                    shares = px["shares_outstanding"]
+                    raw["current_price"] = px["current_price"]
+                    raw["shares_outstanding"] = shares
+                    raw["sps"] = raw["revenue"] / shares
+                    raw["market_cap"] = px["market_cap"]
+                    raw["growth_rate"] = growth
+                    f = self.to_financials(raw)
+                    f.basis = f"Naver {raw.get('_naver_period', '')}"
+                    return f
             except Exception:
                 pass
 
-        # 3) Naver 기본 정보 (PER/PBR/EPS/BPS 만)
+        # 3) 샘플 (라이브 실패 시 — 고정값, 가격만 호출측에서 실시간 갱신)
+        if sample:
+            f = self.to_financials(sample)
+            f.basis = "샘플 고정 데이터"
+            return f
+
+        # 4) Naver 기본 정보 (PER/PBR/EPS/BPS 만)
         if is_kr and naver is not None:
             try:
                 built = naver.build_financials(ticker, name, sector, s)
                 if built and built.current_price > 0:
+                    built.basis = "Naver 기본지표 (재무제표 미확보)"
                     return built
             except Exception:
                 pass
 
-        # 4) Yahoo (글로벌)
+        # 5) Yahoo (글로벌)
         if live is not None:
             try:
                 built = live.build_financials(ticker, name, sector, s)

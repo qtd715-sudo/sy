@@ -837,6 +837,7 @@ function renderValuationDetail(data) {
 
       <div class="card">
         <h3>핵심 재무 <span class="muted" style="font-size:11px;font-weight:400">("-" = 데이터 없음)</span></h3>
+        ${f.basis ? `<div class="muted" style="font-size:12px;margin-bottom:6px">기준: ${f.basis}</div>` : ""}
         <table>
           <tr class="no-hover"><td>EPS</td><td>${priceFmt(f.eps)}</td></tr>
           <tr class="no-hover"><td>BPS</td><td>${priceFmt(f.bps)}</td></tr>
@@ -1020,7 +1021,7 @@ async function loadSyAnalysis(q) {
       return;
     }
     out.innerHTML = renderSyAnalysisContent(d) +
-      asOfLine("평가 기준일", d.price_as_of || Date.now(), "재무 DART 2025-12 · 자동 피어 멀티플");
+      asOfLine("평가 기준일", d.price_as_of || Date.now(), `재무 ${d.financials_basis || "-"} · 자동 피어 멀티플`);
     attachAccordionToggles(out);
   } catch (e) {
     out.innerHTML = `<div class="card error">${e.message}</div>`;
@@ -1363,7 +1364,7 @@ async function loadSyDetail(q) {
       `;
       return;
     }
-    out.innerHTML = renderSyDetailContent(d) + asOfLine("현재가", d.price_as_of, "재무 DART 2025-12 결산 · 피어 멀티플 sample 고정");
+    out.innerHTML = renderSyDetailContent(d) + asOfLine("현재가", d.price_as_of, `재무 ${d.financials_basis || "-"} · 피어 멀티플 sample 고정`);
   } catch (e) {
     out.innerHTML = `<div class="error">${e.message}</div>`;
   }

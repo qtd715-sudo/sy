@@ -61,7 +61,7 @@ class NaverFinancials:
             return None
 
         cache = get_cache()
-        cache_key = f"naver_fin:{code}:{period}"
+        cache_key = f"naver_fin:v2:{code}:{period}"
         cached = cache.get(cache_key)
         if cached:
             return cached[0]
@@ -87,34 +87,65 @@ class NaverFinancials:
             "period": period,
             "periods": [t["key"] for t in fi.get("trTitleList", [])],
             "labels": [t["title"] for t in fi.get("trTitleList", [])],
+            # isConsensus='Y' = 증권사 추정치 (미발표 실적) — 실적 계산에서 제외해야 함
+            "consensus": [t["key"] for t in fi.get("trTitleList", []) if t.get("isConsensus") == "Y"],
             "metrics": result,
         }
         cache.set(cache_key, out, ttl_sec=CACHE_TTL, source="naver_financials")
         return out
 
+    @staticmethod
+    def _actual_periods(data: dict[str, Any]) -> list[str]:
+        """추정치(컨센서스)·미래 기간을 뺀 실적 기간 키 (오름차순)."""
+        import datetime
+        cur_yyyymm = int(datetime.date.today().strftime("%Y%m"))
+        cons = set(data.get("consensus") or [])
+        return sorted(p for p in data.get("periods", []) if p not in cons and int(p) <= cur_yyyymm)
+
     def latest_metrics(self, code: str) -> dict[str, float]:
-        """최근 결산 연도(컨센서스 'Y' 제외)의 재무 지표 dict."""
+        """최근 결산 연도(컨센서스 추정치 제외)의 재무 지표 dict."""
         data = self.fetch(code, period="annual")
         if not data:
             return {}
-        # 가장 최근 실적 연도 (컨센서스 키는 미래) 찾기
-        # trTitleList 의 isConsensus='N' 중 최근
-        # 우리는 위에서 isConsensus 정보 안 저장했으니, periods 의 정수형 정렬 후 미래 제외
-        periods = data.get("periods", [])
-        if not periods:
-            return {}
-        import datetime
-        cur_yyyymm = int(datetime.date.today().strftime("%Y%m"))
-        # YYYYMM 형식 비교
-        valid = [p for p in periods if int(p) <= cur_yyyymm]
+        valid = self._actual_periods(data)
         if not valid:
-            valid = periods  # fallback
-        latest = max(valid)
+            return {}
+        latest = valid[-1]
         out: dict[str, float] = {}
         for metric_name, ts in data["metrics"].items():
             if latest in ts:
                 out[metric_name] = ts[latest]
         out["_period_key"] = latest
+        return out
+
+    def ttm_metrics(self, code: str) -> dict[str, float]:
+        """최근 실적 4개 분기 합산(TTM). 분기 값은 3개월치라 그대로 더하면 12개월.
+
+        손익(매출·영업이익·순이익)·EPS 는 4분기 합, BPS·부채비율 등 잔액성 지표는 최신 분기.
+        연속된 4개 분기가 없으면 {} (호출측이 연간으로 폴백).
+        """
+        data = self.fetch(code, period="quarter")
+        if not data:
+            return {}
+        q = self._actual_periods(data)[-4:]
+        if len(q) < 4:
+            return {}
+        # 연속 분기 검증 (YYYYMM 3개월 간격)
+        idx = [int(p[:4]) * 12 + int(p[4:]) for p in q]
+        if any(b - a != 3 for a, b in zip(idx, idx[1:])):
+            return {}
+        m = data["metrics"]
+        rev = m.get("매출액", {})
+        if not all(rev.get(p) for p in q):
+            return {}
+        out: dict[str, float] = {}
+        for k in ("매출액", "영업이익", "당기순이익", "지배주주순이익", "EPS"):
+            out[k] = sum(m.get(k, {}).get(p, 0.0) for p in q)
+        latest = q[-1]
+        for k in ("BPS", "부채비율"):
+            out[k] = m.get(k, {}).get(latest, 0.0)
+        out["ROE"] = out["EPS"] / out["BPS"] * 100 if out["BPS"] > 0 else 0.0
+        out["_period_key"] = f"{latest[:4]}.{latest[4:]} 최근4분기 TTM"
         return out
 
     def to_partial_financials(self, code: str, name: str, sector: str) -> dict[str, Any] | None:
@@ -127,9 +158,12 @@ class NaverFinancials:
         - FCF    ≈ 순이익 × 0.85 (워킹캐피탈/자본지출 보수적 차감)
         - 부채비율 활용해서 자산/부채 추정
         """
-        m = self.latest_metrics(code)
+        annual = self.latest_metrics(code)
+        m = self.ttm_metrics(code) or annual
         if not m:
             return None
+        if "주당배당금" not in m:
+            m["주당배당금"] = annual.get("주당배당금", 0)  # 배당은 연간 기준
 
         # Naver 단위:
         # 매출/영업이익/순이익/지분 등은 '억원' 단위로 보임 (예: 삼성전자 매출 3,336,059 = 약 3,336조? 실제론 333조 정도)
@@ -140,7 +174,8 @@ class NaverFinancials:
 
         revenue        = m.get("매출액", 0) * UNIT
         operating_inc  = m.get("영업이익", 0) * UNIT
-        net_income     = m.get("당기순이익", 0) * UNIT
+        # 지배주주 순이익 (EPS·PER 기준) — 없으면 연결 전체 순이익
+        net_income     = (m.get("지배주주순이익") or m.get("당기순이익", 0)) * UNIT
         eps            = m.get("EPS", 0)             # 원 단위
         bps            = m.get("BPS", 0)             # 원 단위
         per            = m.get("PER", 0)

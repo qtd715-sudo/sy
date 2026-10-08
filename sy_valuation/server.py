@@ -37,6 +37,7 @@ from .data_sources import (
     LiveFinancials, NaverFundamentals, NaverFinancials,
 )
 from .data_sources.cache import get_cache
+from .data_sources.dart import apply_per_share
 from .data_sources.analytics import get_analytics
 from .valuation.engine import value_company
 from .valuation.sy_method import evaluate_sy
@@ -54,6 +55,18 @@ _STATIC_FILE_CACHE: dict[str, tuple] = {}
 _STATIC_CACHE_LOCK = threading.Lock()
 
 
+def _financials_basis(raw: dict[str, Any]) -> str:
+    """평가에 쓴 재무 데이터의 출처·기준 시점 (화면 표시용)."""
+    if raw.get("_dart_basis"):
+        return f"DART {raw['_dart_basis']}"
+    p = raw.get("_naver_period") or ""
+    if p:
+        return f"Naver {p}"
+    if raw.get("_live"):
+        return "Naver 기본지표 (재무제표 미확보)"
+    return "샘플 고정 데이터"
+
+
 # DART 정식 재무제표로 덮어쓸 필드. sample_financials 의 부족분을 보강.
 # 모든 한국 6자리 종목에 적용 (sample 유무와 무관) — Option A.
 DART_OVERLAY_FIELDS = (
@@ -63,6 +76,8 @@ DART_OVERLAY_FIELDS = (
     "inventory", "receivables", "investment_assets", "cash_equivalents",
     # WACC/FCFF 정통 공식용 (commit 2d5dc82)
     "depreciation", "capex", "tax_expense", "interest_expense",
+    # 지배주주 기준 EPS·BPS·ROE 재계산용
+    "net_income_total", "equity_owner",
 )
 
 
@@ -135,6 +150,7 @@ class App:
                 "asset": meta.get("asset", "stock"),
                 "current_price": f.current_price, "eps": f.eps, "bps": f.bps,
                 "roe": f.roe, "growth_rate": f.growth_rate,
+                "basis": f.basis,
                 "per_now": round(f.current_price / f.eps, 2) if f.eps > 0 else None,
                 "pbr_now": round(f.current_price / f.bps, 2) if f.bps > 0 else None,
                 "sector_per": f.sector_per, "sector_pbr": f.sector_pbr,
@@ -191,94 +207,92 @@ class App:
         return rows
 
     def sy_evaluate(self, query: str) -> dict[str, Any]:
-        raw = self.repo.find(query)
-        if not raw:
-            # 샘플에 없으면: Naver 기본정보(가격·주식수) + DART 정식 재무(있으면) 병합
-            meta = self.repo.get_ticker_meta(query)
-            if meta and meta["ticker"].isdigit() and len(meta["ticker"]) == 6:
-                ticker = meta["ticker"]
-                name = meta["name"]
-                sector = meta.get("sector") or "기타"
+        sample = self.repo.find(query)
+        raw = None
+        meta = self.repo.get_ticker_meta(sample["ticker"] if sample else query)
+        if not meta and sample:
+            meta = {"ticker": sample["ticker"], "name": sample["name"],
+                    "sector": sample.get("sector", ""), "exchange": "KOSPI"}
+        if meta and meta["ticker"].isdigit() and len(meta["ticker"]) == 6:
+            # 국내 종목: Naver 기본정보(가격·주식수) + DART 최신 TTM 재무 병합.
+            # 샘플 종목도 이 경로가 우선 — 샘플 재무는 고정값이라 실시간 가격과 섞이면 왜곡됨.
+            ticker = meta["ticker"]
+            name = meta["name"]
+            sector = (sample or {}).get("sector") or meta.get("sector") or "기타"
 
-                # DART 정식 재무제표 (키 있을 때만 — 손익·자산세부 자동 채움)
-                dart_raw = None
-                if getattr(self.dart, "enabled", False):
-                    try:
-                        dart_raw = self.dart.latest_partial_financials(ticker, name, sector)
-                    except Exception:
-                        dart_raw = None
-
-                # Naver 기본정보 (가격·EPS·BPS·시총 — DART 가 가격은 안 줘서 필수)
-                info = self.naver.fetch(ticker)
-                if info:
-                    from .data_sources.naver_fundamentals import _to_won
-                    price = _to_won(info.get("lastClosePrice", ""))
-                    eps = _to_won(info.get("eps", ""))
-                    bps = _to_won(info.get("bps", ""))
-                    mcap = _to_won(info.get("marketValue", ""))
-                    div = _to_won(info.get("dividend", ""))
-                    shares = mcap / price if price > 0 else 0
-                    if price > 0 and shares > 0:
-                        raw = {
-                            "ticker": ticker, "name": name, "sector": sector,
-                            "market": meta.get("exchange", ""),
-                            "current_price": price, "shares_outstanding": shares,
-                            "eps": eps, "bps": bps, "sps": 0, "dps": div,
-                            "roe": (eps / bps) if bps > 0 else 0.0,
-                            "revenue": 0, "operating_income": 0,
-                            "net_income": eps * shares if eps > 0 else 0,
-                            "ebitda": 0, "fcf": 0, "net_debt": 0,
-                            "growth_rate": 0.05, "market_cap": mcap,
-                            "_live": True,
-                        }
-
-                # DART 결과가 있으면 손익·자산세부 필드를 덮어써서 정확평가로 격상
-                if dart_raw:
-                    if raw is None:
-                        # Naver 가 실패해도 DART 만으로 평가 (가격 0 — 시총 기반 상승률은 부정확)
-                        raw = {"ticker": ticker, "name": name, "sector": sector,
-                               "current_price": 0, "shares_outstanding": 0,
-                               "market_cap": 0, "growth_rate": 0.05}
-                    for k in DART_OVERLAY_FIELDS:
-                        if dart_raw.get(k):
-                            raw[k] = dart_raw[k]
-                    raw["_dart_year"] = dart_raw.get("_dart_year")
-                    raw["_live"] = False  # 정식 DART 데이터로 채워졌으니 부정확 경고 해제
-                    raw["_source"] = "dart+naver"
-
-            if not raw:
-                return {
-                    "error": f"종목을 찾을 수 없습니다: {query}",
-                    "suggestions": self.repo.search(query, limit=5),
-                    "hint": "Naver Finance / DART 에서 데이터를 가져오지 못했습니다.",
-                }
-
-        # sample 종목도 DART 키 있으면 자산/부채/세부 항목 덮어쓰기 (정확도 격상)
-        # sample_financials.json 에 자산 세부 항목이 없는 종목 (예: 삼성전자)이 부채 0 등으로
-        # 왜곡되는 문제 해결. DART 응답은 24h 캐시 — 동일 종목 재호출 시 즉시 lookup.
-        if (raw and not raw.get("_dart_year") and getattr(self.dart, "enabled", False)):
-            tk = raw.get("ticker", "")
-            if tk.isdigit() and len(tk) == 6:
+            # DART 정식 재무제표 (키 있을 때만 — 손익·자산세부 자동 채움)
+            dart_raw = None
+            if getattr(self.dart, "enabled", False):
                 try:
-                    cache = get_cache()
-                    cache_key = f"dart:partial:{tk}"
-                    cached = cache.get(cache_key)
-                    if cached:
-                        dart_extra = cached[0]
-                    else:
-                        dart_extra = self.dart.latest_partial_financials(
-                            tk, raw["name"], raw.get("sector", "기타"))
-                        if dart_extra:
-                            cache.set(cache_key, dart_extra, ttl_sec=86400, source="dart")
-                    if dart_extra:
-                        raw = dict(raw)
-                        for k in DART_OVERLAY_FIELDS:
-                            if dart_extra.get(k):
-                                raw[k] = dart_extra[k]
-                        raw["_dart_year"] = dart_extra.get("_dart_year")
-                        raw["_source"] = (raw.get("_source") or "sample") + "+dart"
+                    dart_raw = self.dart.latest_partial_financials(ticker, name, sector)
                 except Exception:
-                    pass
+                    dart_raw = None
+
+            # Naver 기본정보 (가격·EPS·BPS·시총 — DART 가 가격은 안 줘서 필수)
+            info = self.naver.fetch(ticker)
+            if info:
+                from .data_sources.naver_fundamentals import _to_won
+                price = _to_won(info.get("lastClosePrice", ""))
+                eps = _to_won(info.get("eps", ""))
+                bps = _to_won(info.get("bps", ""))
+                mcap = _to_won(info.get("marketValue", ""))
+                div = _to_won(info.get("dividend", ""))
+                shares = mcap / price if price > 0 else 0
+                if price > 0 and shares > 0:
+                    raw = {
+                        "ticker": ticker, "name": name, "sector": sector,
+                        "market": meta.get("exchange", ""),
+                        "current_price": price, "shares_outstanding": shares,
+                        "eps": eps, "bps": bps, "sps": 0, "dps": div,
+                        "roe": (eps / bps) if bps > 0 else 0.0,
+                        "revenue": 0, "operating_income": 0,
+                        "net_income": eps * shares if eps > 0 else 0,
+                        "ebitda": 0, "fcf": 0, "net_debt": 0,
+                        "growth_rate": (sample or {}).get("growth_rate", 0.05),
+                        "market_cap": mcap,
+                        "_live": True,
+                    }
+
+            # DART 결과가 있으면 손익·자산세부 필드를 덮어써서 정확평가로 격상
+            if dart_raw:
+                if raw is None:
+                    # Naver 가 실패해도 DART 만으로 평가 (가격 0 — 시총 기반 상승률은 부정확)
+                    raw = {"ticker": ticker, "name": name, "sector": sector,
+                           "current_price": 0, "shares_outstanding": 0,
+                           "market_cap": 0, "growth_rate": (sample or {}).get("growth_rate", 0.05)}
+                for k in DART_OVERLAY_FIELDS:
+                    if dart_raw.get(k):
+                        raw[k] = dart_raw[k]
+                for k in ("_dart_year", "_dart_basis", "_dart_period_end"):
+                    raw[k] = dart_raw.get(k)
+                raw["_live"] = False  # 정식 DART 데이터로 채워졌으니 부정확 경고 해제
+                raw["_source"] = "dart+naver"
+                apply_per_share(raw)
+            else:
+                # DART 없음(키 없음·한도 초과) → Naver 최근 4분기 합산(TTM) 손익으로 보강,
+                # 그것도 없으면 샘플 재무 (가격은 아래에서 실시간 갱신)
+                nf = None
+                if raw is not None:
+                    try:
+                        nf = self.naver_fin.to_partial_financials(ticker, name, sector)
+                    except Exception:
+                        nf = None
+                if nf:
+                    for k in ("revenue", "operating_income", "net_income", "ebitda", "fcf", "eps", "bps", "roe"):
+                        if nf.get(k):
+                            raw[k] = nf[k]
+                    raw["_naver_period"] = nf.get("_naver_period", "")
+                elif sample:
+                    raw = dict(sample)
+        elif sample:
+            raw = dict(sample)
+
+        if not raw:
+            return {
+                "error": f"종목을 찾을 수 없습니다: {query}",
+                "suggestions": self.repo.search(query, limit=5),
+                "hint": "Naver Finance / DART 에서 데이터를 가져오지 못했습니다.",
+            }
 
         # 비-샘플 종목은 DART universe 캐시에서 섹터 보강 (피어 매칭용)
         if not raw.get("sector") or raw.get("sector") == "기타":
@@ -316,6 +330,7 @@ class App:
             ]
         cached = get_cache().get(f"price:{raw['ticker']}")
         out["price_as_of"] = cached[1].get("fetched_at") if cached else None
+        out["financials_basis"] = _financials_basis(raw)
         return out
 
     # SY 평가법 스크리너에서 제외할 종목 (지주사·통신사 등 자산가치/수익가치가 왜곡되는 케이스)

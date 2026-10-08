@@ -9,7 +9,7 @@
 //  - /api/admin/*, /api/prefetch 는 캐시하지 않음 (인증/사이드이펙트)
 //
 // 캐시 키 'sy-v6' — 이전 버전 캐시는 activate 시 모두 삭제됨.
-const CACHE = 'sy-v6';
+const CACHE = 'sy-v7';
 const API_FRESH_MS = 5 * 60 * 1000; // 5분 이상 묵으면 캐시 무시
 
 const PRECACHE = [

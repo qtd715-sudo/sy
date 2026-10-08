@@ -50,6 +50,7 @@ class Financials:
     sector_pbr: float
     sector_psr: float
     sector_ev_ebitda: float
+    basis: str = ""            # 재무 데이터 출처·기준 시점 (예: "DART 2026 반기 TTM")
 
 
 @dataclass
