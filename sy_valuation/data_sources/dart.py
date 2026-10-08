@@ -15,6 +15,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import threading
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -24,6 +26,9 @@ from typing import Any
 
 
 _CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "cache"
+# corpCode.xml 다운로드·파싱 직렬화 — 부팅 잡(dart_cc, dart_univ)과 요청 스레드가 동시에
+# 각자 수십 MB XML 을 파싱하면 Render 무료 플랜(512MB) 메모리 초과로 재시작 루프에 빠짐.
+_CORP_LOCK = threading.Lock()
 
 
 # 업종별 감가상각 추정율 (매출 대비). DART fnlttSinglAcntAll 은 감가상각을 주석에만 둬서,
@@ -389,32 +394,43 @@ class DartConnector:
             return json.loads(resp.read().decode("utf-8"))
 
     def load_corp_codes(self, force: bool = False) -> dict[str, str]:
-        """stock_code → corp_code 매핑 로드 (최초 1회 ZIP 다운로드)."""
+        """stock_code → corp_code 매핑 로드 (최초 1회 ZIP 다운로드).
+
+        force=True 여도 캐시 파일이 하루 이내면 재다운로드 생략 (부팅 시 중복 방지).
+        """
         cache = _CACHE_DIR / "corp_codes.json"
-        if cache.exists() and not force:
-            self._corp_map = json.loads(cache.read_text(encoding="utf-8"))
-            return self._corp_map
+        with _CORP_LOCK:
+            if self._corp_map and not force:
+                return self._corp_map
+            if cache.exists() and (not force or time.time() - cache.stat().st_mtime < 86400):
+                self._corp_map = json.loads(cache.read_text(encoding="utf-8"))
+                return self._corp_map
 
-        if not self.enabled:
-            return {}
+            if not self.enabled:
+                return {}
 
-        url = f"{self.BASE}/corpCode.xml?crtfc_key={self.api_key}"
-        with urllib.request.urlopen(url, timeout=self.timeout) as resp:
-            data = resp.read()
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            with zf.open("CORPCODE.xml") as xf:
-                tree = ET.parse(xf)
-        root = tree.getroot()
-        mapping: dict[str, str] = {}
-        for item in root.findall("list"):
-            stock = (item.findtext("stock_code") or "").strip()
-            corp = (item.findtext("corp_code") or "").strip()
-            if stock and corp:
-                mapping[stock] = corp
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps(mapping, ensure_ascii=False), encoding="utf-8")
-        self._corp_map = mapping
-        return mapping
+            url = f"{self.BASE}/corpCode.xml?crtfc_key={self.api_key}"
+            with urllib.request.urlopen(url, timeout=self.timeout) as resp:
+                data = resp.read()
+            mapping: dict[str, str] = {}
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                with zf.open("CORPCODE.xml") as xf:
+                    # 스트리밍 파싱 — 전체 트리를 메모리에 올리지 않음 (수십만 노드)
+                    root = None
+                    for event, elem in ET.iterparse(xf, events=("start", "end")):
+                        if root is None and event == "start":
+                            root = elem
+                        if event == "end" and elem.tag == "list":
+                            stock = (elem.findtext("stock_code") or "").strip()
+                            corp = (elem.findtext("corp_code") or "").strip()
+                            if stock and corp:
+                                mapping[stock] = corp
+                            root.clear()
+            del data
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps(mapping, ensure_ascii=False), encoding="utf-8")
+            self._corp_map = mapping
+            return mapping
 
     def _fetch_report(self, stock_code: str, year: int, report: str, fs_div: str) -> tuple[str, list[dict[str, Any]]]:
         """(status, rows). status: '000' 정상 / '013' 데이터 없음 / 그 외(한도초과 020, 네트워크 등) 일시 오류."""
