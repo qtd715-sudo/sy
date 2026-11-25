@@ -184,7 +184,9 @@ class NaverFinancials:
         debt_ratio     = m.get("부채비율", 0) / 100.0  # %
         dps            = m.get("주당배당금", 0)         # 원
 
-        if eps <= 0 and net_income <= 0:
+        # 적자는 "데이터 없음" 이 아니다. 매출·이익이 전부 비어 있을 때만 미확보로 본다.
+        # (예전엔 EPS·순이익이 0 이하면 None 을 돌려줘서, 적자 기업은 매출까지 통째로 버려졌다.)
+        if revenue <= 0 and operating_inc == 0 and net_income == 0 and eps == 0:
             return None
 
         # 추정값

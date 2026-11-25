@@ -98,6 +98,16 @@ class SyInputs:
     # 보수계수
     liquidation_discount: float = 0.7  # 청산가치 = 순자산×0.7
 
+    # 사이클 정상화 (valuation/normalize.py). 0 = 미적용 → TTM 값 사용.
+    # DCF 는 normalized_fcf, 영업이익 배수는 normalized_operating_income 을 우선 쓴다.
+    normalized_fcf: float = 0.0
+    normalized_operating_income: float = 0.0
+    normalized_net_income: float = 0.0   # PER × 순이익
+    normalized_ebitda: float = 0.0       # EBITDA 멀티플, EV/EBITDA
+    # 피어 멀티플 출처: "peers"(피어 중앙값) / "sector"(섹터 표준) / "mixed" / "user"
+    peer_source: str = ""
+    normalization: dict[str, Any] = field(default_factory=dict)  # 판단 근거 (표시·감사용)
+
 
 @dataclass
 class SyValuationResult:
@@ -223,7 +233,8 @@ def dcf_fcff(inp: SyInputs) -> tuple[float, list[dict[str, float]]]:
     """FCFF 10년 명시기간 + 영구가치.
     리턴: (기업가치, 연도별 표)
     """
-    if inp.fcf <= 0 or inp.wacc <= inp.terminal_growth:
+    base_fcf = inp.normalized_fcf if inp.normalized_fcf > 0 else inp.fcf
+    if base_fcf <= 0 or inp.wacc <= inp.terminal_growth:
         return 0.0, []
     # 투영 연도 라벨의 기준 = 기초 재무의 회계연도(FY). 기초가 FY{base_year} 이면
     # 1년차 투영은 FY{base_year+1}. base_year 미상(0)이면 현재연도-1 로 폴백.
@@ -234,7 +245,7 @@ def dcf_fcff(inp: SyInputs) -> tuple[float, list[dict[str, float]]]:
         base_year = date.today().year - 1
     rows = []
     pv_total = 0.0
-    fcff = inp.fcf
+    fcff = base_fcf
     for t in range(1, inp.forecast_years + 1):
         g = inp.growth_rate_short if t <= 5 else inp.growth_rate_long
         fcff = fcff * (1 + g)
@@ -248,16 +259,24 @@ def dcf_fcff(inp: SyInputs) -> tuple[float, list[dict[str, float]]]:
     return pv_total + pv_tv, rows
 
 
+def _earnings(inp: SyInputs, name: str) -> float:
+    """정상화 값이 있으면 그것을, 없으면 TTM 값을 쓴다."""
+    normalized = getattr(inp, "normalized_" + name)
+    return normalized if normalized > 0 else getattr(inp, name)
+
+
 def ebitda_multiple(inp: SyInputs) -> float:
-    if inp.ebitda <= 0 or inp.peer_ev_ebitda_avg <= 0:
+    ebitda = _earnings(inp, "ebitda")
+    if ebitda <= 0 or inp.peer_ev_ebitda_avg <= 0:
         return 0.0
-    return inp.ebitda * inp.peer_ev_ebitda_avg
+    return ebitda * inp.peer_ev_ebitda_avg
 
 
 def op_income_multiple(inp: SyInputs, mult: float = 10.0) -> float:
-    if inp.operating_income <= 0:
+    op = inp.normalized_operating_income if inp.normalized_operating_income > 0 else inp.operating_income
+    if op <= 0:
         return 0.0
-    return inp.operating_income * mult
+    return op * mult
 
 
 # -------- 2) 자산가치접근법 --------
@@ -344,9 +363,10 @@ def asset_nnwc(inp: SyInputs) -> float:
 # -------- 3) 상대가치접근법 --------
 
 def market_per(inp: SyInputs) -> float:
-    if inp.peer_per_avg <= 0 or inp.net_income <= 0:
+    ni = _earnings(inp, "net_income")
+    if inp.peer_per_avg <= 0 or ni <= 0:
         return 0.0
-    return inp.net_income * inp.peer_per_avg
+    return ni * inp.peer_per_avg
 
 
 def market_pbr(inp: SyInputs) -> float:
@@ -363,9 +383,10 @@ def market_psr(inp: SyInputs) -> float:
 
 
 def market_ev_ebitda(inp: SyInputs) -> float:
-    if inp.ebitda <= 0 or inp.peer_ev_ebitda_avg <= 0:
+    ebitda = _earnings(inp, "ebitda")
+    if ebitda <= 0 or inp.peer_ev_ebitda_avg <= 0:
         return 0.0
-    return inp.ebitda * inp.peer_ev_ebitda_avg - inp.net_debt
+    return ebitda * inp.peer_ev_ebitda_avg - inp.net_debt
 
 
 # -------- 종합 --------
@@ -408,6 +429,12 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
     income_mid = statistics.median(income_vals) if income_vals else 0.0
     if not income_vals:
         notes.append("수익가치: 계산 가능한 모델 없음 (FCF/EBITDA/영업이익 부족)")
+    if inp.normalized_fcf > 0 or inp.normalized_operating_income > 0:
+        why = (inp.normalization or {}).get("reason", "")
+        notes.append("사이클 정점 판단 — 이익 기반 모델(DCF·영업이익 배수·EBITDA 멀티플·PER·EV/EBITDA)에 "
+                     "정상화 이익 적용" + (f" ({why})" if why else ""))
+    elif (inp.normalization or {}).get("cycle") == "trough":
+        notes.append("수익가치: TTM 이익이 과거 평균보다 낮음(저점 가능) — 상향 조정 없이 TTM 그대로 사용")
 
     # 2) 자산가치 — 4가지 방법
     book = asset_book(inp)
@@ -431,6 +458,10 @@ def evaluate_sy(inp: SyInputs) -> SyValuationResult:
     market_vals = [v for v in (per_v, pbr_v, psr_v, ev_v) if v > 0]
     if not market_vals:
         notes.append("상대가치: 피어 데이터 부족")
+    if inp.peer_source == "sector":
+        notes.append("상대가치: 규모가 비슷한 피어가 3개 미만 — 섹터 표준 멀티플 사용")
+    elif inp.peer_source == "mixed":
+        notes.append("상대가치: 일부 멀티플은 피어 표본 3개 미만이라 섹터 표준값 사용")
     market_min = min(market_vals) if market_vals else 0.0
     market_max = max(market_vals) if market_vals else 0.0
     market_mid = statistics.median(market_vals) if market_vals else 0.0

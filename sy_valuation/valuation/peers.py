@@ -1,12 +1,13 @@
 """자동 피어 그룹 빌더.
 
-타겟 기업과 (1) 같은 섹터, (2) 매출액 비슷한 규모 (±50% ~ ±2배)
-인 기업들을 sample_financials.json 에서 골라 피어 평균 PER/PBR/PSR/EV-EBITDA 계산.
+타겟 기업과 (1) 같은 섹터, (2) 규모가 0.3~3배(모자라면 0.1~10배)인 기업을 골라
+피어 중앙값 PER/PBR/PSR/EV-EBITDA 를 계산한다. 규모는 같은 기준(매출↔매출, 시총↔시총)으로만 비교.
 
 예: IT서비스 섹터 + 매출 X억 기업 → 같은 섹터의 매출 ±50% 기업들과 비교.
 """
 
 from __future__ import annotations
+import math
 from typing import Any
 
 
@@ -27,6 +28,30 @@ def _size_proxy(c: dict[str, Any]) -> float:
     if price > 0 and shares > 0:
         return price * shares
     return 0.0
+
+
+def _mcap(c: dict[str, Any]) -> float:
+    mc = float(c.get("market_cap", 0) or 0)
+    if mc > 0:
+        return mc
+    return float(c.get("current_price", 0) or 0) * float(c.get("shares_outstanding", 0) or 0)
+
+
+def _size_ratio(target: dict[str, Any], cand: dict[str, Any]) -> float:
+    """후보 규모 / 타겟 규모. **같은 기준끼리만** 비교한다 (매출↔매출, 없으면 시총↔시총).
+
+    매출과 시가총액을 섞어 비교하면 매출 수백조 기업에 시총 수백억 기업이 붙는다. 비교 불가면 0.
+    """
+    tr, cr = float(target.get("revenue", 0) or 0), float(cand.get("revenue", 0) or 0)
+    if tr > 0 and cr > 0:
+        return cr / tr
+    tm, cm = _mcap(target), _mcap(cand)
+    if tm > 0 and cm > 0:
+        return cm / tm
+    return 0.0
+
+
+WIDE_BAND = (0.1, 10.0)   # 기본 밴드에서 피어가 모자랄 때 한 번만 넓히는 한계
 
 
 def select_peers(
@@ -65,40 +90,29 @@ def select_peers(
     if not same_sector:
         return []
 
-    # size 보유 후보와 비보유 후보 분리
-    with_size = [(c, _size_proxy(c)) for c in same_sector if _size_proxy(c) > 0]
-    without_size = [c for c in same_sector if _size_proxy(c) <= 0]
+    # 타겟 규모를 알 수 없으면 섹터 후보를 그대로 (규모 비교 불가)
+    if target_size <= 0 and _mcap(target) <= 0:
+        return same_sector[:max_peers]
 
-    # target size 가 0 이면 섹터 후보 그대로 (size 보유 우선)
-    if target_size <= 0:
-        out = [c for c, _ in with_size[:max_peers]]
-        if len(out) < max_peers:
-            out += without_size[: max_peers - len(out)]
-        return out
+    # 규모 비율(같은 기준)로 걸러낸다. 밴드 안 피어가 모자라면 WIDE_BAND 까지 한 번만 넓힌다.
+    # 그 밖의 기업은 넣지 않는다 — 모자라면 호출측이 섹터 표준 멀티플로 대체한다.
+    ratios = [(c, _size_ratio(target, c)) for c in same_sector]
 
-    # size 밴드 내 기업
-    lo, hi = size_band
-    in_band = [c for c, s in with_size if lo * target_size <= s <= hi * target_size]
+    def within(band: tuple[float, float]) -> list[tuple[dict[str, Any], float]]:
+        return [(c, r) for c, r in ratios if r > 0 and band[0] <= r <= band[1]]
 
-    # 부족하면 밴드 확장 — with_size 에서 거리 가까운 순
-    if len(in_band) < min_peers and with_size:
-        sorted_pool = sorted(with_size, key=lambda cs: abs(cs[1] - target_size))
-        in_band = [c for c, _ in sorted_pool[: max(min_peers, max_peers)]]
-
-    # 그래도 부족하면 without_size (size 미보유) 로 충당 — 그래도 같은 섹터 우선
-    if len(in_band) < min_peers:
-        in_band = in_band + without_size[: max_peers - len(in_band)]
-
-    # size 거리 가까운 순으로 정렬 후 max_peers 제한 (size 없는 항목은 뒤로)
-    in_band.sort(key=lambda c: (
-        0 if _size_proxy(c) > 0 else 1,
-        abs(_size_proxy(c) - target_size),
-    ))
-    return in_band[:max_peers]
+    picked = within(size_band)
+    if len(picked) < min_peers:
+        picked = within(WIDE_BAND)
+    picked.sort(key=lambda cr: abs(math.log(cr[1])))   # 규모가 가까운 순 (배율 기준)
+    return [c for c, _ in picked[:max_peers]]
 
 
 def compute_peer_multiples(peers: list[dict[str, Any]]) -> dict[str, float]:
-    """피어들의 PER/PBR/PSR/EV-EBITDA 평균 (이상치 제외)."""
+    """피어들의 PER/PBR/PSR/EV-EBITDA 중앙값 (이상치 제외).
+
+    평균은 PER 60배짜리 한 종목에 끌려가므로 중앙값을 쓴다.
+    """
     pers, pbrs, psrs, evs = [], [], [], []
     for p in peers:
         price = float(p.get("current_price", 0) or 0)
@@ -127,7 +141,11 @@ def compute_peer_multiples(peers: list[dict[str, Any]]) -> dict[str, float]:
                 evs.append(ev_eb)
 
     def avg(xs: list[float]) -> float:
-        return round(sum(xs) / len(xs), 2) if xs else 0.0
+        if not xs:
+            return 0.0
+        xs = sorted(xs)
+        mid = len(xs) // 2
+        return round(xs[mid] if len(xs) % 2 else (xs[mid - 1] + xs[mid]) / 2, 2)
 
     return {
         "per": avg(pers),

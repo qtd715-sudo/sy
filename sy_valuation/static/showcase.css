@@ -1,0 +1,127 @@
+/* B2B 쇼케이스 — API 콘솔 + 가정 시뮬레이터 (style.css 의 토큰 사용) */
+
+/* ── API 콘솔 ───────────────────────────────────────────── */
+.api-fab {
+  position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 900;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border: 1px solid var(--accent); border-radius: 999px;
+  background: var(--accent); color: #fff; font: 600 12px/1 var(--mono); cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+}
+.api-fab b { background: #fff; color: var(--accent); border-radius: 999px; padding: 2px 7px; font-size: 11px; }
+
+.api-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 950;
+  width: min(480px, 100vw); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg-elev); border-left: 1px solid var(--line-strong);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, .08);
+  transform: translateX(105%); transition: transform .18s ease; visibility: hidden;
+}
+.api-drawer.open { transform: none; visibility: visible; }
+.api-head { position: sticky; top: 0; z-index: 1; background: var(--bg-elev); display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.api-head b { font: 600 14px var(--mono); }
+.api-sub { color: var(--text-dim); font-size: 11.5px; margin-top: 3px; }
+.api-btn {
+  border: 1px solid var(--line-strong); background: var(--bg-elev); color: var(--text);
+  padding: 4px 10px; border-radius: 4px; font: 500 11px var(--mono); cursor: pointer; white-space: nowrap;
+}
+.api-btn:hover { background: var(--bg-elev-2); }
+.api-btn.right { margin-left: auto; }
+
+.api-mcp { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--bg-elev-2); }
+.api-mcp-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.api-mcp-head code { font: 11px var(--mono); color: var(--text-dim); overflow-wrap: anywhere; flex: 1; min-width: 0; }
+.api-ok { color: var(--pos); font: 600 12px var(--mono); margin: 10px 0 6px; }
+.mcp-tools { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.mcp-tools li { display: grid; gap: 2px; font-size: 11.5px; color: var(--text-dim); }
+.mcp-tools code { font: 600 11.5px var(--mono); color: var(--text); }
+
+.api-keyrow { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--text-dim); }
+.api-keyrow input { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 4px; font: 11px var(--mono); background: var(--bg-elev); color: var(--text); }
+
+.api-list { list-style: none; margin: 0; padding: 0 0 24px; }
+.api-empty { padding: 20px 16px; font-size: 12px; }
+.api-entry { border-bottom: 1px solid var(--line); }
+.api-entry.open { background: var(--bg-elev-2); }
+.api-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 16px; border: 0; background: none; text-align: left; cursor: pointer; color: var(--text); }
+.api-method { font: 700 10px var(--mono); padding: 2px 5px; border-radius: 3px; border: 1px solid var(--line-strong); flex: none; }
+.api-method.m-post { background: var(--accent); color: #fff; border-color: var(--accent); }
+.api-path { font: 11.5px var(--mono); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.api-meta { font: 10.5px var(--mono); color: var(--text-dim); flex: none; }
+.api-meta.ok { color: var(--pos); }
+.api-meta.bad { color: var(--neg); }
+.api-detail { padding: 0 16px 12px; }
+.api-tabs { display: flex; gap: 4px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.api-tabs button[data-act="tab"] { border: 0; border-bottom: 2px solid transparent; background: none; padding: 4px 6px; font: 500 11px var(--mono); color: var(--text-dim); cursor: pointer; }
+.api-tabs button[data-act="tab"].on { color: var(--text); border-bottom-color: var(--accent); }
+.api-tabs button[disabled] { opacity: .4; cursor: not-allowed; }
+.api-code {
+  margin: 0; padding: 10px 12px; max-height: 320px; overflow: auto;
+  background: #0a0a0a; color: #e7e5e4; border-radius: 4px;
+  font: 11px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.api-mcp .api-code { margin-bottom: 8px; }
+
+/* ── 시뮬레이터 ─────────────────────────────────────────── */
+.sim-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+.sim-controls { position: sticky; top: 12px; }
+.sim-controls h3, .sim-result h3 { display: flex; align-items: center; gap: 8px; }
+.sim-slider { padding: 10px 0; border-top: 1px solid var(--line); }
+.sim-slider:first-of-type { border-top: 0; }
+.sim-slider-head { display: flex; justify-content: space-between; font-size: 12.5px; }
+.sim-slider-head output { font: 600 12.5px var(--mono); }
+.sim-slider input[type="range"] { width: 100%; margin: 8px 0 2px; accent-color: var(--accent); }
+.sim-slider-base { font-size: 11px; }
+.sim-result { display: grid; gap: 16px; min-width: 0; transition: opacity .12s; }
+.sim-result.busy { opacity: .6; }
+.sim-result .card { margin: 0; overflow-x: auto; }
+
+.sim-kpis { display: flex; flex-wrap: wrap; gap: 20px 32px; margin-top: 10px; }
+.sim-kpi { display: grid; gap: 2px; }
+.sim-kpi span { font-size: 11px; color: var(--text-dim); }
+.sim-kpi b { font: 600 18px var(--mono); }
+.sim-kpi.main b { font-size: 28px; }
+.sim-kpi small { font: 11px var(--mono); color: var(--text-dim); }
+.sim-proof { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font: 11px var(--mono); color: var(--text-dim); }
+.sim-proof code { color: var(--text); }
+.proof-badge { background: var(--pos); color: #fff; padding: 2px 8px; border-radius: 3px; font-weight: 600; }
+
+.ff { display: grid; gap: 8px; }
+.ff-row { display: grid; grid-template-columns: 64px minmax(80px, 1fr) minmax(0, 250px); gap: 12px; align-items: center; font-size: 12px; }
+.ff-track { position: relative; height: 16px; background: var(--bg-elev-2); border-radius: 2px; }
+.ff-bar { position: absolute; top: 0; bottom: 0; background: var(--line-strong); border-radius: 2px; }
+.ff-total .ff-bar { background: var(--accent-2); }
+.ff-mid { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--neg); }
+.ff-val { font: 11px var(--mono); color: var(--text-dim); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ff-val b { color: var(--text); }
+.ff-track-axis { background: none; height: 18px; }
+.ff-mcap { position: absolute; top: -118px; bottom: 0; border-left: 1px dashed var(--warn); }
+.ff-mcap span { position: absolute; bottom: 0; left: 4px; white-space: nowrap; font: 10.5px var(--mono); color: var(--warn); }
+
+.sens { border-collapse: collapse; width: 100%; font: 11.5px var(--mono); }
+.sens th, .sens td { padding: 7px 8px; text-align: right; border: 1px solid var(--line); white-space: nowrap; }
+.sens th { background: var(--bg-elev-2); color: var(--text-dim); font-weight: 500; }
+.sens th.cur { color: var(--text); font-weight: 700; }
+.sens td.cur { outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 700; }
+
+.sim-models th { text-align: left; font-size: 11px; color: var(--text-dim); font-weight: 500; padding-bottom: 6px; }
+.sim-models th.right { text-align: right; }
+.sim-notes { margin: 10px 0 0; padding-left: 18px; font-size: 11.5px; }
+
+.sim-custom { margin-bottom: 16px; }
+.sim-custom-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 14px; margin-bottom: 12px; }
+.sim-custom label { display: grid; gap: 4px; font-size: 12px; }
+.sim-custom input { padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 4px; font: 12px var(--mono); background: var(--bg-elev); color: var(--text); min-width: 0; }
+.sim-custom button[type="submit"] { padding: 8px 16px; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 4px; cursor: pointer; font-weight: 600; }
+.sim-custom-note { font-size: 11px; margin-left: 10px; }
+
+.sim-link { font: 500 11px var(--mono); margin-left: 8px; color: var(--text); text-decoration: underline; }
+
+@media (max-width: 860px) {
+  .sim-layout { grid-template-columns: minmax(0, 1fr); }
+  .sim-controls { position: static; }
+  .ff-row { grid-template-columns: 56px minmax(0, 1fr); }
+  .ff-val { grid-column: 1 / -1; text-align: left; }
+  .ff-mcap { top: 0; }
+  .ff-mcap span { position: static; padding-left: 4px; }
+}
