@@ -14,6 +14,7 @@ from .sy_method import (
     SyInputs, calculate_wacc, calculate_growth_rate,
     CAPM_RF, CAPM_BETA_DEFAULT, CAPM_MRP, CORPORATE_TAX_RATE,
 )
+from .normalize import normalize_cash_flow
 from .peers import select_peers, compute_peer_multiples, peer_summary, enrich_peers_with_naver
 
 
@@ -25,6 +26,12 @@ SECTOR_BETA = {
     "철강": 1.10, "조선": 1.30, "에너지": 1.05, "엔터": 1.25,
     "기술": 1.10, "가상자산": 2.00,
 }
+
+# 단기(1~5년차) 성장률 상한. 20% 를 5년 적용하면 현금흐름이 2.5배가 된다.
+# 대형 상장사가 5년 연속 달성하기 어려운 수준이라 10% 로 제한 (6~10년차는 그 절반).
+GROWTH_CAP_SHORT = 0.10
+# 피어 멀티플을 믿으려면 최소 이 개수의 표본이 필요. 미만이면 섹터 표준값 사용.
+MIN_PEER_OBS = 3
 
 # 폴백 WACC (DART/시총 데이터 부재 시)
 FALLBACK_WACC = 0.0875
@@ -82,11 +89,18 @@ def build_inputs_from_raw(
             auto_peers = enrich_peers_with_naver(auto_peers, naver_fetcher, cache=cache)
         auto_mults = compute_peer_multiples(auto_peers)
 
+    sources: set[str] = set()
+    n_key = {"per": "n_per", "pbr": "n_pbr", "psr": "n_psr", "ev_ebitda": "n_ev"}
+
     def _pick(key_user: str, key_auto: str, default_key: str, default_value: float) -> float:
         if raw.get(key_user):
+            sources.add("user")
             return float(raw[key_user])
-        if auto_mults.get(key_auto):
+        # 피어 표본이 MIN_PEER_OBS 개 미만이면 1~2개 기업에 좌우되므로 섹터 표준값을 쓴다
+        if auto_mults.get(key_auto) and auto_mults.get(n_key[key_auto], 0) >= MIN_PEER_OBS:
+            sources.add("peers")
             return float(auto_mults[key_auto])
+        sources.add("sector")
         return float(sector_multiples.get(default_key, default_value))
 
     peer_per = _pick("peer_per_avg",       "per",       "per",       12.0)
@@ -96,6 +110,7 @@ def build_inputs_from_raw(
 
     # 피어 정보 (UI 표시용)
     peers_info = raw.get("peers") or peer_summary(auto_peers)
+    peer_source = next(iter(sources)) if len(sources) == 1 else "mixed"
 
     # ─── WACC 동적 계산 (CAPM 기반) ──────────────────────────────────────
     # 1) Tc: DART 법인세비용/영업이익. 없으면 CORPORATE_TAX_RATE(22%).
@@ -126,14 +141,14 @@ def build_inputs_from_raw(
     # 장기는 단기의 절반으로 감속 (성숙기 가정), terminal 은 한국 GDP 추세 2.5%.
     payout = float(raw.get("dividend_payout_ratio", 0.30) or 0.30)
     if raw.get("growth_rate"):
-        growth_short = min(max(float(raw["growth_rate"]), 0.0), 0.20)
+        growth_short = min(max(float(raw["growth_rate"]), 0.0), GROWTH_CAP_SHORT)
     else:
         growth_short = calculate_growth_rate(
             net_income=net_income,
             total_equity=total_equity,
             dividend_payout_ratio=payout,
+            cap=GROWTH_CAP_SHORT,
         )
-    growth_long = growth_short * 0.5  # 후반 5년은 절반으로 감속
     terminal_growth = 0.025            # 한국 GDP 추세 (설계서 v2.0)
 
     # 기초 재무 데이터의 회계연도 (DART _dart_year, 예: "2025") — DCF 투영 연도 라벨용.
@@ -143,6 +158,26 @@ def build_inputs_from_raw(
         base_year = int(_dy) if _dy else 0
     except (ValueError, TypeError):
         base_year = 0
+
+    # ─── 사이클 정상화 ────────────────────────────────────────────────────
+    # raw["_op_margin_history"] (과거 실적 연도 영업이익률) 가 있을 때만 판단.
+    # raw["normalize"] 가 False 면 끔 (TTM 그대로 평가).
+    norm: dict[str, Any] = {}
+    if raw.get("_op_margin_history") and raw.get("normalize", True):
+        norm = normalize_cash_flow(revenue, op_inc, fcf, tax_rate, raw["_op_margin_history"],
+                                   net_income=net_income, ebitda=ebitda)
+
+    def _norm(key: str) -> float:
+        return float(norm.get(key, 0) or 0) if norm.get("applied") else 0.0
+
+    norm_fcf, norm_op = _norm("normalized_fcf"), _norm("normalized_operating_income")
+    norm_ni, norm_ebitda = _norm("normalized_net_income"), _norm("normalized_ebitda")
+    # 정점이면 성장률도 정상 이익 기준 지속가능성장률(ROE × 유보율)을 넘지 않게 한다
+    if norm_ni > 0 and total_equity > 0:
+        growth_short = min(growth_short, calculate_growth_rate(
+            net_income=norm_ni, total_equity=total_equity,
+            dividend_payout_ratio=payout, cap=GROWTH_CAP_SHORT))
+    growth_long = growth_short * 0.5  # 후반 5년은 절반으로 감속
 
     return SyInputs(
         ticker=raw["ticker"],
@@ -186,4 +221,10 @@ def build_inputs_from_raw(
         peer_psr_avg=peer_psr,
         peer_ev_ebitda_avg=peer_ev,
         peers=peers_info,
+        normalized_fcf=norm_fcf,
+        normalized_operating_income=norm_op,
+        normalized_net_income=norm_ni,
+        normalized_ebitda=norm_ebitda,
+        peer_source=peer_source,
+        normalization=norm,
     )

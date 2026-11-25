@@ -44,6 +44,7 @@ from .valuation.sy_method import evaluate_sy
 from .valuation.sy_builder import build_inputs_from_raw
 from .recommender import find_undervalued, recommend_investment
 from .scheduler import Scheduler
+from . import b2b_api
 
 
 _ROOT = Path(__file__).resolve().parent
@@ -206,9 +207,25 @@ class App:
             rows.append(d)
         return rows
 
-    def sy_evaluate(self, query: str) -> dict[str, Any]:
+    def _op_margin_history(self, ticker: str) -> list[float]:
+        """과거 실적 연도의 영업이익률(소수, 오래된 순). 컨센서스·미래 기간 제외. 실패 시 []."""
+        try:
+            data = self.naver_fin.fetch(ticker, period="annual")
+            if not data:
+                return []
+            margins = data.get("metrics", {}).get("영업이익률", {})
+            out = []
+            for p in self.naver_fin._actual_periods(data):
+                if margins.get(p) is not None and data["metrics"].get("매출액", {}).get(p):
+                    out.append(float(margins[p]) / 100.0)
+            return out
+        except Exception:
+            return []
+
+    def sy_evaluate(self, query: str, normalize: bool = True) -> dict[str, Any]:
         sample = self.repo.find(query)
         raw = None
+        naver_industry = ""   # Naver 업종 코드 — 섹터가 비어 있을 때 채우는 용도
         meta = self.repo.get_ticker_meta(sample["ticker"] if sample else query)
         if not meta and sample:
             meta = {"ticker": sample["ticker"], "name": sample["name"],
@@ -231,6 +248,7 @@ class App:
             # Naver 기본정보 (가격·EPS·BPS·시총 — DART 가 가격은 안 줘서 필수)
             info = self.naver.fetch(ticker)
             if info:
+                naver_industry = info.get("_industryCode", "")
                 from .data_sources.naver_fundamentals import _to_won
                 price = _to_won(info.get("lastClosePrice", ""))
                 eps = _to_won(info.get("eps", ""))
@@ -306,8 +324,21 @@ class App:
                         break
             except Exception:
                 pass
-        sectors = self.repo.sector_table()
-        sector_mults = sectors.get(raw.get("sector", ""), {})
+        # 사이클 정상화용 과거 영업이익률 (국내 종목, Naver 연간 실적 — 24h 캐시)
+        if normalize and str(raw.get("ticker", "")).isdigit():
+            hist = self._op_margin_history(raw["ticker"])
+            if hist:
+                raw = dict(raw)
+                raw["_op_margin_history"] = hist
+        # 그래도 섹터가 없으면 Naver 업종 코드로 채운다 (DART universe 캐시가 없거나 종목이 빠진 경우)
+        if not raw.get("sector") or raw.get("sector") == "기타":
+            from .data_sources.naver_sectors import sector_from_naver
+            ns = sector_from_naver(naver_industry)
+            if ns:
+                raw = dict(raw)
+                raw["sector"] = ns
+        # 세부 라벨(응용SW 등)은 상위 섹터(IT서비스) 배수로 조회
+        sector_mults = self.repo.sector_multiples(raw.get("sector", ""))
         try:
             q = self.price.quote(raw["ticker"])
             if q and q.price > 0 and raw.get("shares_outstanding"):
@@ -331,6 +362,8 @@ class App:
         cached = get_cache().get(f"price:{raw['ticker']}")
         out["price_as_of"] = cached[1].get("fetched_at") if cached else None
         out["financials_basis"] = _financials_basis(raw)
+        out["normalization"] = inp.normalization or {"applied": False, "cycle": "unknown",
+                                                     "reason": "과거 실적 이력 없음"}
         return out
 
     # SY 평가법 스크리너에서 제외할 종목 (지주사·통신사 등 자산가치/수익가치가 왜곡되는 케이스)
@@ -723,7 +756,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/recommend":
                 return self._send_json(app.recommend(params.get("q", "")))
             if path == "/api/sy/evaluate":
-                return self._send_json(app.sy_evaluate(params.get("q", "")))
+                norm = params.get("normalize", "1") not in ("0", "false", "False")
+                return self._send_json(app.sy_evaluate(params.get("q", ""), normalize=norm))
             if path == "/api/sy/undervalued":
                 return self._send_json(app.sy_undervalued(n=int(params.get("n", 10))))
             if path == "/api/prefetch":
@@ -773,6 +807,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(app.price_quote(params.get("q", "")))
             if path == "/api/history":
                 return self._send_json(app.price_history(params.get("q", "")))
+            if path == "/api/v1/openapi.json":
+                return self._send_json(b2b_api.openapi_spec())
+            if path == "/mcp":
+                # 이 서버는 SSE 스트림을 제공하지 않음 — MCP 클라이언트는 POST 만 사용
+                return self._send_json({"error": {"code": "method_not_allowed",
+                                                  "message": "MCP 는 POST /mcp 로 호출하세요."}}, status=405)
         except Exception as e:
             return self._send_json({"error": str(e)}, status=500)
 
@@ -786,6 +826,54 @@ class Handler(BaseHTTPRequestHandler):
                 return self._not_found()
             return self._send_file(target)
         return self._not_found()
+
+    # ---------- B2B: 계산 API(v1) + MCP ----------
+
+    def do_OPTIONS(self):
+        # 외부 포털/에이전트 런타임의 브라우저 호출용 CORS preflight
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers",
+                         "Content-Type, Authorization, X-API-Key, Mcp-Session-Id, MCP-Protocol-Version")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_POST(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path not in ("/api/v1/valuations/compute", "/mcp"):
+            return self._not_found()
+        try:
+            b2b_api.authorize(self.headers, self._client_ip())
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0:
+                raise b2b_api.ApiError(400, "invalid_request", "요청 본문이 비어 있습니다.")
+            if length > b2b_api.MAX_BODY_BYTES:
+                raise b2b_api.ApiError(413, "payload_too_large", "요청 본문이 너무 큽니다.")
+            try:
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                if path == "/mcp":
+                    return self._send_json({"jsonrpc": "2.0", "id": None,
+                                            "error": {"code": -32700, "message": "Parse error"}}, status=400)
+                raise b2b_api.ApiError(400, "invalid_json", "JSON 파싱에 실패했습니다.")
+
+            app = get_app()
+            if path == "/mcp":
+                reply = b2b_api.handle_mcp(app, body)
+                if reply is None:  # notification — 본문 없이 수락
+                    self.send_response(202)
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                return self._send_json(reply)
+            return self._send_json(b2b_api.compute(app, body))
+        except b2b_api.ApiError as e:
+            return self._send_json(e.to_dict(), status=e.status)
+        except Exception as e:
+            return self._send_json({"error": {"code": "internal_error", "message": str(e)}}, status=500)
 
 
 def _local_ips() -> list[str]:

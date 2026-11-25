@@ -237,15 +237,31 @@ class FinancialsRepository:
         if not meta:
             return None
         sector = (sample or {}).get("sector") or meta.get("sector") or "기타"
-        s = self._sectors.get(sector, {"per": 12.0, "pbr": 1.0, "psr": 1.0, "ev_ebitda": 8.0})
         ticker = meta["ticker"]
         name = meta["name"]
         growth = (sample or {}).get("growth_rate", 0.05)
 
         is_kr = ticker.isdigit() and len(ticker) == 6
 
+        _memo: dict[str, Any] = {}
+
+        def _naver_info():
+            # 한 번의 평가에서 섹터 판별·가격 조회가 같은 응답을 쓰도록 1회만 호출
+            if "info" not in _memo:
+                try:
+                    _memo["info"] = naver.fetch(ticker) if naver is not None else None
+                except Exception:
+                    _memo["info"] = None
+            return _memo["info"]
+
+        # 섹터가 비어 있으면 Naver 업종 코드로 채운다 (전종목 목록엔 섹터가 없음)
+        if sector == "기타" and is_kr:
+            from .naver_sectors import sector_from_naver
+            sector = sector_from_naver((_naver_info() or {}).get("_industryCode")) or sector
+        s = self.sector_multiples(sector) or {"per": 12.0, "pbr": 1.0, "psr": 1.0, "ev_ebitda": 8.0}
+
         def _naver_price_shares():
-            info = naver.fetch(ticker) if naver is not None else None
+            info = _naver_info()
             if not info:
                 return None
             from .naver_fundamentals import _to_won
@@ -326,3 +342,8 @@ class FinancialsRepository:
 
     def sector_table(self) -> dict[str, dict[str, float]]:
         return dict(self._sectors)
+
+    def sector_multiples(self, sector: str) -> dict[str, float]:
+        """섹터 표준 배수. 세부 라벨(응용SW 등)은 상위 섹터(IT서비스) 배수로 조회. 없으면 {}."""
+        from .dart_sectors import SECTOR_PARENT
+        return dict(self._sectors.get(sector) or self._sectors.get(SECTOR_PARENT.get(sector, ""), {}))

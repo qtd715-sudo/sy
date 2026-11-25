@@ -202,6 +202,7 @@ async function render() {
   if (path.startsWith("/multi"))     { setActiveNav("multi");     return renderMultiPage(root, params); }
   if (path.startsWith("/analysis"))  { setActiveNav("analysis");  return renderAnalysisPage(root, params); }
   if (path.startsWith("/news"))      { setActiveNav("news");      return renderNews(root); }
+  if (path.startsWith("/sim") && window.renderSimulator) { setActiveNav("sim"); return window.renderSimulator(root, params); }
 
   // 3) 관리자 페이지 (라우트 변경 없음)
   if (path.startsWith("/analytics")) { setActiveNav("analytics"); return renderAnalytics(root); }
@@ -320,7 +321,8 @@ function renderAnalysisContent({ sy, val, rec, q }) {
   // ─── SY 결과 ────────────────────────────────────────────────
   const syBlock = sy ? `
     <div class="card analysis-block">
-      <h3>SY 평가법 <span class="muted" style="font-size:11px">／ 3접근법 통합</span></h3>
+      <h3>SY 평가법 <span class="muted" style="font-size:11px">／ 3접근법 통합</span>
+        <a class="sim-link" href="#/sim?q=${encodeURIComponent(ticker)}">가정 바꿔보기 →</a></h3>
       <table class="kpi-table">
         <tr><td>수익가치 (min/mid/max)</td>
             <td class="right">${fmt.bigKrw(sy.income_min)} / <b>${fmt.bigKrw(sy.income_mid)}</b> / ${fmt.bigKrw(sy.income_max)}</td></tr>
