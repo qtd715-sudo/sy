@@ -58,8 +58,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # v3 는 2026-11 러너(Node 24 강제)에서 실패 → v4. 실패해도 ubuntu 러너에 SDK 가 기본 설치돼 있어 빌드는 진행.
       - name: Android SDK 설정
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        continue-on-error: true
 
       - name: 의존성 설치
         run: npm install
